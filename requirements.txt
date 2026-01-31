@@ -1,0 +1,33 @@
+# Python dependencies for Databricks Cost Calculator
+
+# Core dependencies
+requests==2.31.0
+python-dateutil==2.8.2
+
+# Airflow (if running standalone or in custom image)
+apache-airflow==2.8.1
+apache-airflow-providers-http==4.7.0
+
+# Azure SDK (for Azure Cost Management integration - optional)
+azure-mgmt-costmanagement==4.0.1
+azure-identity==1.15.0
+azure-mgmt-consumption==10.0.0
+
+# Data processing
+pandas==2.1.4
+numpy==1.26.2
+
+# Utilities
+python-dotenv==1.0.0
+pydantic==2.5.3
+
+# Testing
+pytest==7.4.3
+pytest-mock==3.12.0
+responses==0.24.1
+
+# Logging
+structlog==24.1.0
+
+# Type checking
+mypy==1.8.0
