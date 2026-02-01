@@ -1,0 +1,6 @@
+apiVersion: v2
+name: cost-analytics
+description: A Helm chart for Calculator Cost Analytics
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

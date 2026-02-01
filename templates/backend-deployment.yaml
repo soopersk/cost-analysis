@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cost-analytics.fullname" . }}-backend
+spec:
+  replicas: {{ .Values.backend.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "cost-analytics.name" . }}-backend
+  template:
+    metadata:
+      labels:
+        app: {{ include "cost-analytics.name" . }}-backend
+    spec:
+      containers:
+          - name: backend
+            image: {{ .Values.backend.image }}
+            imagePullPolicy: IfNotPresent
+            ports:
+              - containerPort: {{ .Values.backend.service.port }}
+            resources:
+              limits:
+                cpu: 500m
+                memory: 512Mi
+              requests:
+                cpu: 250m
+                memory: 256Mi
+        # Spring Boot Actuator health check
+            livenessProbe:
+              httpGet:
+                path: /actuator/health/liveness
+                port: {{ .Values.backend.service.port }}
+              initialDelaySeconds: 30
+              periodSeconds: 10
+            readinessProbe:
+              httpGet:
+                path: /actuator/health/readiness
+                port: {{ .Values.backend.service.port }}
+              initialDelaySeconds: 15
+            env:
+              - name: SPRING_DATASOURCE_URL
+                value: jdbc:postgresql://{{ .Values.backend.db.host }}:5432/{{ .Values.backend.db.name }}
+              - name: SPRING_DATASOURCE_USERNAME
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ include "cost-analytics.fullname" . }}-backend-secret
+                    key: username
+              - name: SPRING_DATASOURCE_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ include "cost-analytics.fullname" . }}-backend-secret
+                    key: password

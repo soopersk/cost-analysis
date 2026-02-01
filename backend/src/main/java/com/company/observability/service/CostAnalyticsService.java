@@ -5,6 +5,7 @@ import com.company.observability.repository.CalculatorRunCostRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -71,11 +72,11 @@ public class CostAnalyticsService {
 
     public byte[] exportToCsv(LocalDate startDate, LocalDate endDate, String calculatorId) {
         List<RecentRunCost> runs = costRepository.getAllRunsForExport(startDate, endDate, calculatorId);
-        
+
         StringBuilder csv = new StringBuilder();
         csv.append("Run ID,Calculator ID,Calculator Name,Start Time,End Time,Duration (sec),")
-           .append("Status,DBU Cost,VM Cost,Storage Cost,Total Cost,Worker Count,Spot Instance,Photon Enabled\n");
-        
+                .append("Status,DBU Cost,VM Cost,Storage Cost,Total Cost,Worker Count,Spot Instance,Photon Enabled\n");
+
         for (RecentRunCost run : runs) {
             csv.append(String.format("%s,%s,%s,%s,%s,%d,%s,%.2f,%.2f,%.2f,%.2f,%d,%s,%s\n",
                     run.getRunId(),
@@ -83,20 +84,21 @@ public class CostAnalyticsService {
                     run.getCalculatorName(),
                     run.getStartTime(),
                     run.getEndTime(),
-                    run.getDurationSeconds(),
+                    run.getDurationSeconds() != null ? run.getDurationSeconds() : 0,
                     run.getStatus(),
-                    run.getDbuCost(),
-                    run.getVmCost(),
-                    run.getStorageCost(),
-                    run.getTotalCost(),
-                    run.getWorkerCount(),
-                    run.isSpotInstance(),
-                    run.isPhotonEnabled()
+                    run.getDbuCost() != null ? run.getDbuCost() : BigDecimal.ZERO,
+                    run.getVmCost() != null ? run.getVmCost() : BigDecimal.ZERO,
+                    run.getStorageCost() != null ? run.getStorageCost() : BigDecimal.ZERO,
+                    run.getTotalCost() != null ? run.getTotalCost() : BigDecimal.ZERO,
+                    run.getWorkerCount() != null ? run.getWorkerCount().intValue() : 0,
+                    run.getSpotInstance() != null ? run.getSpotInstance() : false,
+                    run.getPhotonEnabled() != null ? run.getPhotonEnabled() : false
             ));
         }
-        
+
         return csv.toString().getBytes();
     }
+
 
     private LocalDate calculateStartDate(String period, LocalDate endDate) {
         return switch (period) {

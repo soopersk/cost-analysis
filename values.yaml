@@ -1,0 +1,24 @@
+replicaCount: 1
+
+frontend:
+  image: your-dockerhub-username/cost-analytics-frontend:1.0
+  replicas: 1
+  service:
+    type: ClusterIP
+    port: 80
+
+backend:
+  image: your-dockerhub-username/cost-analytics-backend:1.0
+  replicas: 1
+  service:
+    type: ClusterIP
+    port: 8080
+  db:
+    host: postgres.example.com
+    name: costdb
+    username: costuser
+    password: costpassword
+
+ingress:
+  enabled: true
+  hostname: cost-analytics.local
