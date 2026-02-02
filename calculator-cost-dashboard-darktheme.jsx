@@ -536,7 +536,7 @@ const CalculatorCostDashboard = () => {
                   </tr>
                 ))}
               </tbody>
-            </ta
+            </table>
           </div>
         </div>
 

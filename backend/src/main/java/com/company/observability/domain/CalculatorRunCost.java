@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -89,5 +90,40 @@ public class CalculatorRunCost {
     // Audit timestamps
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    // Helper methods
+    public BigDecimal getCostPerMinute() {
+        if (durationSeconds == null || durationSeconds == 0 || totalCostUsd == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal durationMinutes = BigDecimal.valueOf(durationSeconds).divide(BigDecimal.valueOf(60), 6, BigDecimal.ROUND_HALF_UP);
+        return totalCostUsd.divide(durationMinutes, 6, RoundingMode.HALF_UP);
+    }
+
+    public BigDecimal getCostPerGbProcessed() {
+        if (totalCostUsd == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal totalGb = BigDecimal.ZERO;
+        if (storageInputGb != null) totalGb = totalGb.add(storageInputGb);
+        if (storageOutputGb != null) totalGb = totalGb.add(storageOutputGb);
+
+        if (totalGb.compareTo(BigDecimal.ZERO) == 0) {
+            return BigDecimal.ZERO;
+        }
+        return totalCostUsd.divide(totalGb, 6, RoundingMode.HALF_UP);
+    }
+
+    public boolean isHighCost() {
+        return totalCostUsd != null && totalCostUsd.compareTo(BigDecimal.valueOf(50)) > 0;
+    }
+
+    public boolean isFailed() {
+        return "FAILED".equals(runStatus);
+    }
+
+    public boolean isSuccess() {
+        return "SUCCESS".equals(runStatus);
+    }
 }
 

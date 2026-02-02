@@ -13,6 +13,9 @@ spring:
       connection-timeout: 30000
       idle-timeout: 600000
       max-lifetime: 1800000
+      # Connection pool optimization for JdbcTemplate
+      auto-commit: true
+      connection-test-query: SELECT 1
 
   flyway:
     enabled: true
@@ -23,6 +26,7 @@ spring:
     serialization:
       write-dates-as-timestamps: false
     time-zone: UTC
+    default-property-inclusion: non_null
 
 server:
   port: 8080

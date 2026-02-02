@@ -22,11 +22,8 @@ This is a production-ready cost analytics dashboard for tracking Databricks calc
 
 ```sql
 -- Create database
-CREATE DATABASE observability_db;
+CREATE DATABASE observability;
 
--- Create schemas
-CREATE SCHEMA IF NOT EXISTS finops;
-CREATE SCHEMA IF NOT EXISTS observability;
 
 -- Run the cost table creation script (from previous response)
 -- See: calculator_run_costs table definition

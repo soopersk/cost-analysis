@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import {
   TrendingUp, TrendingDown, DollarSign, Activity, AlertCircle,
-  Check, Zap, Database, Cloud, HardDrive, Download,
+  Check, Zap, Database, Cloud, Download,
   Sun, Moon, ChevronUp, ChevronDown
 } from 'lucide-react';
 
@@ -20,7 +20,6 @@ const CalculatorCostDashboard = () => {
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
-  // Theme management
   useEffect(() => {
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
@@ -47,10 +46,10 @@ const CalculatorCostDashboard = () => {
       const mappedData = {
         ...result,
         costBreakdown: [
-          { name: 'DBU Compute', value: result.dailyCosts.reduce((s, d) => s + (d.dbuCost || 0), 0), color: '#0ea5e9' },
-          { name: 'VM Infrastructure', value: result.dailyCosts.reduce((s, d) => s + (d.vmCost || 0), 0), color: '#8b5cf6' },
+          { name: 'DBU Compute', value: result.dailyCosts.reduce((s, d) => s + (d.dbuCost || 0), 0), color: '#ef4444' },
+          { name: 'VM Infrastructure', value: result.dailyCosts.reduce((s, d) => s + (d.vmCost || 0), 0), color: '#f59e0b' },
           { name: 'Storage', value: result.dailyCosts.reduce((s, d) => s + (d.storageCost || 0), 0), color: '#10b981' },
-          { name: 'Network', value: result.dailyCosts.reduce((s, d) => s + (d.networkCost || 0), 0), color: '#f59e0b' }
+          { name: 'Network', value: result.dailyCosts.reduce((s, d) => s + (d.networkCost || 0), 0), color: '#64748b' }
         ],
         efficiency: {
           spotInstanceUsage: 68,
@@ -84,9 +83,7 @@ const CalculatorCostDashboard = () => {
 
   const stats = useMemo(() => {
     if (!data) return null;
-    let totalCost = 0;
-    let totalRuns = 0;
-    let avgEfficiency = 0;
+    let totalCost = 0, totalRuns = 0, avgEfficiency = 0;
     if (selectedCalculator === 'all') {
       totalRuns = data.calculatorCosts.reduce((sum, c) => sum + (c.totalRuns || 0), 0);
       totalCost = data.calculatorCosts.reduce((sum, c) => sum + (c.totalCost || 0), 0);
@@ -121,11 +118,6 @@ const CalculatorCostDashboard = () => {
         if (sortConfig.key === 'startTime') {
           aVal = new Date(aVal).getTime();
           bVal = new Date(bVal).getTime();
-        } else if (typeof aVal === 'number' && typeof bVal === 'number') {
-          // numeric compare
-        } else {
-          aVal = String(aVal).toLowerCase();
-          bVal = String(bVal).toLowerCase();
         }
         if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
         if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
@@ -171,7 +163,7 @@ const CalculatorCostDashboard = () => {
 
   if (loading && !data) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-8">
+      <div className="min-h-screen bg-white dark:bg-slate-950 p-8">
         <div className="animate-pulse space-y-8">
           <div className="flex justify-between">
             <div className="space-y-2">
@@ -196,7 +188,7 @@ const CalculatorCostDashboard = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-950">
         <div className="text-center">
           <div className="text-red-500 mb-4">
             <AlertCircle size={48} />
@@ -204,7 +196,7 @@ const CalculatorCostDashboard = () => {
           <p className="text-lg text-slate-700 dark:text-slate-300 mb-2">{error}</p>
           <button
             onClick={refetch}
-            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+            className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
           >
             Retry
           </button>
@@ -229,7 +221,7 @@ const CalculatorCostDashboard = () => {
             </div>
           )}
         </div>
-        <div className={`p-3 rounded-2xl transition-colors ${accentColor === '#0ea5e9' ? 'bg-sky-100 dark:bg-sky-950' : ''}`}>
+        <div className={`p-3 rounded-2xl transition-colors ${accentColor === '#ef4444' ? 'bg-red-50 dark:bg-red-950' : ''}`}>
           <Icon size={28} className="text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200" style={{ color: accentColor }} />
         </div>
       </div>
@@ -237,12 +229,12 @@ const CalculatorCostDashboard = () => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen bg-white dark:bg-slate-950">
       {/* Top Navigation */}
       <div className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-10">
         <div className="max-w-screen-2xl mx-auto px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center">
+            <div className="w-9 h-9 bg-red-600 rounded-xl flex items-center justify-center">
               <span className="text-white font-bold text-xl">C</span>
             </div>
             <div>
@@ -252,13 +244,12 @@ const CalculatorCostDashboard = () => {
           </div>
 
           <div className="flex items-center gap-6">
-            {/* Filters */}
             <div className="flex gap-3">
               <select
                 aria-label="Select Period"
                 value={selectedPeriod}
                 onChange={(e) => setSelectedPeriod(e.target.value)}
-                className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all"
               >
                 <option value="7d">Last 7 days</option>
                 <option value="30d">Last 30 days</option>
@@ -268,7 +259,7 @@ const CalculatorCostDashboard = () => {
                 aria-label="Select Calculator"
                 value={selectedCalculator}
                 onChange={(e) => setSelectedCalculator(e.target.value)}
-                className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all"
               >
                 <option value="all">All Calculators</option>
                 {data.calculatorCosts.map(c => (
@@ -289,7 +280,7 @@ const CalculatorCostDashboard = () => {
 
             <button
               onClick={handleExportCSV}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl text-sm font-medium transition-colors shadow-sm"
+              className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-xl text-sm font-medium transition-colors shadow-sm"
             >
               <Download size={16} />
               Export CSV
@@ -312,14 +303,14 @@ const CalculatorCostDashboard = () => {
             subtitle={selectedCalculator === 'all' ? 'Across all calculators' : 'Selected calculator'}
             icon={DollarSign}
             trend={stats.costTrend}
-            accentColor="#0ea5e9"
+            accentColor="#ef4444"
           />
           <StatCard
             title="Total Runs"
             value={stats.totalRuns.toLocaleString()}
             subtitle={selectedCalculator === 'all' ? 'Completed executions' : 'Selected calculator'}
             icon={Activity}
-            accentColor="#8b5cf6"
+            accentColor="#f59e0b"
           />
           <StatCard
             title="Avg Cost / Run"
@@ -335,29 +326,24 @@ const CalculatorCostDashboard = () => {
             subtitle={selectedCalculator === 'all' ? 'Overall optimization' : 'Selected calculator'}
             icon={Check}
             trend={4.2}
-            accentColor="#f59e0b"
+            accentColor="#64748b"
           />
         </div>
 
         {/* Charts Row 1 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
-          {/* Cost Trend Area Chart */}
           <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 p-7">
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-6">Cost Trend Over Time</h2>
             <ResponsiveContainer width="100%" height={320}>
               <AreaChart data={data.dailyCosts} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.25}/>
-                    <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.25}/>
+                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
                   </linearGradient>
                   <linearGradient id="colorDBU" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.25}/>
-                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorVM" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#f87171" stopOpacity={0.25}/>
+                    <stop offset="95%" stopColor="#f87171" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" className="dark:stroke-slate-700" />
@@ -378,9 +364,8 @@ const CalculatorCostDashboard = () => {
                   formatter={(value) => `$${value.toFixed(2)}`}
                 />
                 <Legend />
-                <Area type="monotone" dataKey="totalCost" stroke="#0ea5e9" strokeWidth={2.5} fillOpacity={1} fill="url(#colorTotal)" name="Total Cost" />
-                <Area type="monotone" dataKey="dbuCost" stroke="#8b5cf6" strokeWidth={2} fillOpacity={1} fill="url(#colorDBU)" name="DBU Cost" />
-                <Area type="monotone" dataKey="vmCost" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorVM)" name="VM Cost" />
+                <Area type="monotone" dataKey="totalCost" stroke="#ef4444" strokeWidth={2.5} fillOpacity={1} fill="url(#colorTotal)" name="Total Cost" />
+                <Area type="monotone" dataKey="dbuCost" stroke="#f87171" strokeWidth={2} fillOpacity={1} fill="url(#colorDBU)" name="DBU Cost" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -424,7 +409,6 @@ const CalculatorCostDashboard = () => {
 
         {/* Charts Row 2 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
-          {/* Cost by Calculator Bar Chart */}
           <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 p-7">
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-6">Cost by Calculator</h2>
             <ResponsiveContainer width="100%" height={340}>
@@ -448,22 +432,21 @@ const CalculatorCostDashboard = () => {
                   formatter={(value) => `$${value.toFixed(2)}`}
                 />
                 <Legend />
-                <Bar dataKey="dbuCost" stackId="a" fill="#0ea5e9" name="DBU Cost" />
-                <Bar dataKey="vmCost" stackId="a" fill="#8b5cf6" name="VM Cost" />
+                <Bar dataKey="dbuCost" stackId="a" fill="#ef4444" name="DBU Cost" />
+                <Bar dataKey="vmCost" stackId="a" fill="#f59e0b" name="VM Cost" />
                 <Bar dataKey="storageCost" stackId="a" fill="#10b981" name="Storage Cost" />
               </BarChart>
             </ResponsiveContainer>
           </div>
 
-          {/* Optimization Opportunities */}
           <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 p-7">
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-6">Optimization Opportunities</h2>
             <div className="space-y-8">
               {[
-                { label: 'Spot Instance Usage', value: data.efficiency.spotInstanceUsage, icon: Cloud, color: 'from-sky-500 to-blue-600', target: 'Target: ≥80%' },
-                { label: 'Photon Adoption', value: data.efficiency.photonAdoption, icon: Zap, color: 'from-violet-500 to-purple-600', target: '20-30% potential savings' },
+                { label: 'Spot Instance Usage', value: data.efficiency.spotInstanceUsage, icon: Cloud, color: 'from-red-500 to-rose-600', target: 'Target: ≥80%' },
+                { label: 'Photon Adoption', value: data.efficiency.photonAdoption, icon: Zap, color: 'from-amber-500 to-orange-600', target: '20-30% potential savings' },
                 { label: 'Cluster Utilization', value: data.efficiency.avgClusterUtilization, icon: Database, color: 'from-emerald-500 to-green-600', target: 'Excellent' },
-                { label: 'Retry Rate', value: data.efficiency.retryRate, icon: AlertCircle, color: 'from-amber-500 to-orange-500', target: `Est. waste: $${((stats.totalCost * data.efficiency.retryRate) / 100).toFixed(0)}` }
+                { label: 'Retry Rate', value: data.efficiency.retryRate, icon: AlertCircle, color: 'from-red-400 to-red-600', target: `Est. waste: $${((stats.totalCost * data.efficiency.retryRate) / 100).toFixed(0)}` }
               ].map((item, index) => (
                 <div key={index}>
                   <div className="flex justify-between items-center mb-2">
@@ -497,13 +480,13 @@ const CalculatorCostDashboard = () => {
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/80">
                   <th onClick={() => handleSort('runId')} className="cursor-pointer py-4 px-6 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest hover:text-slate-700 dark:hover:text-slate-300">
-                    <div className="flex items-center gap-1">Run ID {getSortIcon('runId')}</div>
+                    Run ID {getSortIcon('runId')}
                   </th>
                   <th onClick={() => handleSort('calculatorName')} className="cursor-pointer py-4 px-6 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest hover:text-slate-700 dark:hover:text-slate-300">
-                    <div className="flex items-center gap-1">Calculator {getSortIcon('calculatorName')}</div>
+                    Calculator {getSortIcon('calculatorName')}
                   </th>
                   <th onClick={() => handleSort('startTime')} className="cursor-pointer py-4 px-6 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest hover:text-slate-700 dark:hover:text-slate-300">
-                    <div className="flex items-center gap-1">Start Time {getSortIcon('startTime')}</div>
+                    Start Time {getSortIcon('startTime')}
                   </th>
                   <th className="py-4 px-6 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Duration</th>
                   <th className="py-4 px-6 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Workers</th>
@@ -525,8 +508,8 @@ const CalculatorCostDashboard = () => {
                       {Math.floor((run.durationSeconds || 0) / 60)}m {(run.durationSeconds || 0) % 60}s
                     </td>
                     <td className="py-4 px-6 text-sm text-slate-600 dark:text-slate-400">{run.workerCount}</td>
-                    <td className="py-4 px-6 font-medium text-sky-600 dark:text-sky-400">${(run.dbuCost || 0).toFixed(2)}</td>
-                    <td className="py-4 px-6 font-medium text-violet-600 dark:text-violet-400">${(run.vmCost || 0).toFixed(2)}</td>
+                    <td className="py-4 px-6 font-medium text-red-600 dark:text-red-400">${(run.dbuCost || 0).toFixed(2)}</td>
+                    <td className="py-4 px-6 font-medium text-amber-600 dark:text-amber-400">${(run.vmCost || 0).toFixed(2)}</td>
                     <td className="py-4 px-6 font-semibold text-slate-900 dark:text-white">${(run.totalCost || 0).toFixed(2)}</td>
                     <td className="py-4 px-6">
                       <span className={`inline-block px-3 py-0.5 text-xs font-medium rounded-full ${run.status === 'SUCCESS' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300' : 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300'}`}>
@@ -536,7 +519,7 @@ const CalculatorCostDashboard = () => {
                   </tr>
                 ))}
               </tbody>
-            </ta
+            </table>
           </div>
         </div>
 
