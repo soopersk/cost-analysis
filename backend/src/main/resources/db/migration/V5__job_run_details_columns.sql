@@ -1,0 +1,18 @@
+ALTER TABLE calculator_run_costs
+    ADD COLUMN IF NOT EXISTS job_id BIGINT,
+    ADD COLUMN IF NOT EXISTS job_name VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS worker_count INTEGER,
+    ADD COLUMN IF NOT EXISTS duration_hours NUMERIC(10,4),
+    ADD COLUMN IF NOT EXISTS spark_version VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS runtime_engine VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS cluster_source VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS workload_type VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS region VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS autoscale_enabled BOOLEAN,
+    ADD COLUMN IF NOT EXISTS autoscale_min_workers INTEGER,
+    ADD COLUMN IF NOT EXISTS autoscale_max_workers INTEGER,
+    ADD COLUMN IF NOT EXISTS task_version VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS context_id VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS megdp_run_id VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS tenant_abb VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS collection_timestamp TIMESTAMP;

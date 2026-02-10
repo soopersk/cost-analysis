@@ -25,25 +25,37 @@ public class CalculatorRunCost {
     private String calculatorName;
 
     private Long databricksRunId;
+    private Long jobId;
+    private String jobName;
     private String clusterId;
 
     // Cluster configuration
     private String driverNodeType;
     private String workerNodeType;
+    private Integer workerCount;
     private Integer minWorkers;
     private Integer maxWorkers;
     private BigDecimal avgWorkerCount;
     private Integer peakWorkerCount;
     private Boolean spotInstanceUsed;
     private Boolean photonEnabled;
+    private Boolean autoscaleEnabled;
+    private Integer autoscaleMinWorkers;
+    private Integer autoscaleMaxWorkers;
 
     // Runtime metrics
     private LocalDateTime runStartTime;
     private LocalDateTime runEndTime;
     private Integer durationSeconds;
+    private BigDecimal durationHours;
     private String runStatus;
     private Boolean isRetry;
     private Integer attemptNumber;
+    private String sparkVersion;
+    private String runtimeEngine;
+    private String clusterSource;
+    private String workloadType;
+    private String region;
 
     // DBU costs
     private BigDecimal dbuUnitsConsumed;
@@ -80,12 +92,19 @@ public class CalculatorRunCost {
     private String calculationVersion;
     private LocalDateTime calculationTimestamp;
     private String calculatedBy;
+    private LocalDateTime collectionTimestamp;
 
     // Manual adjustments
     private BigDecimal manualAdjustmentUsd;
     private String manualAdjustmentReason;
     private String adjustedBy;
     private LocalDateTime adjustedAt;
+
+    // Custom tags
+    private String taskVersion;
+    private String contextId;
+    private String megdpRunId;
+    private String tenantAbb;
 
     // Audit timestamps
     private LocalDateTime createdAt;
