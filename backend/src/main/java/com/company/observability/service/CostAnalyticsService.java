@@ -35,6 +35,13 @@ public class CostAnalyticsService {
                 .build();
     }
 
+    /**
+     *
+     * @param startDate
+     * @param endDate
+     * @param calculatorId
+     * @return
+     */
     public List<DailyCostTrend> getDailyTrends(LocalDate startDate, LocalDate endDate, String calculatorId) {
         if (calculatorId == null) {
             return costRepository.getDailyCostTrendsAllCalculators(startDate, endDate);

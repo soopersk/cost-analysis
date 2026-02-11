@@ -42,21 +42,27 @@ public class CalculatorRunCostRepository {
         String sql = """
             INSERT INTO calculator_run_costs (
                 calculator_run_id, reporting_date, calculator_id, calculator_name,
-                databricks_run_id, cluster_id, driver_node_type, worker_node_type,
+                databricks_run_id, job_id, job_name, cluster_id,
+                driver_node_type, worker_node_type, worker_count,
                 min_workers, max_workers, avg_worker_count, peak_worker_count,
-                spot_instance_used, photon_enabled,
-                run_start_time, run_end_time, duration_seconds, run_status,
+                spot_instance_used, photon_enabled, autoscale_enabled,
+                autoscale_min_workers, autoscale_max_workers,
+                run_start_time, run_end_time, duration_seconds, duration_hours, run_status,
                 is_retry, attempt_number,
+                spark_version, runtime_engine, cluster_source, workload_type, region,
                 dbu_units_consumed, dbu_unit_price, dbu_cost_usd, dbu_sku,
                 vm_driver_cost_usd, vm_worker_cost_usd, vm_total_cost_usd, vm_node_hours,
                 storage_input_gb, storage_output_gb, storage_cost_usd,
                 network_egress_gb, network_cost_usd, total_cost_usd,
                 allocation_method, confidence_score, concurrent_runs_on_cluster,
                 cluster_utilization_pct, calculation_version, calculation_timestamp,
-                calculated_by, created_at, updated_at
+                calculated_by, collection_timestamp,
+                task_version, context_id, megdp_run_id, tenant_abb,
+                created_at, updated_at
             ) VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW()
             )
             RETURNING cost_id
         """;
@@ -71,21 +77,33 @@ public class CalculatorRunCostRepository {
             ps.setString(idx++, cost.getCalculatorId());
             ps.setString(idx++, cost.getCalculatorName());
             ps.setLong(idx++, cost.getDatabricksRunId());
+            ps.setObject(idx++, cost.getJobId());
+            ps.setString(idx++, cost.getJobName());
             ps.setString(idx++, cost.getClusterId());
             ps.setString(idx++, cost.getDriverNodeType());
             ps.setString(idx++, cost.getWorkerNodeType());
+            ps.setObject(idx++, cost.getWorkerCount());
             ps.setObject(idx++, cost.getMinWorkers());
             ps.setObject(idx++, cost.getMaxWorkers());
             ps.setBigDecimal(idx++, cost.getAvgWorkerCount());
             ps.setObject(idx++, cost.getPeakWorkerCount());
             ps.setBoolean(idx++, cost.getSpotInstanceUsed());
             ps.setBoolean(idx++, cost.getPhotonEnabled());
-            ps.setTimestamp(idx++, Timestamp.valueOf(cost.getRunStartTime()));
-            ps.setTimestamp(idx++, Timestamp.valueOf(cost.getRunEndTime()));
+            ps.setObject(idx++, cost.getAutoscaleEnabled());
+            ps.setObject(idx++, cost.getAutoscaleMinWorkers());
+            ps.setObject(idx++, cost.getAutoscaleMaxWorkers());
+            ps.setTimestamp(idx++, toTimestamp(cost.getRunStartTime()));
+            ps.setTimestamp(idx++, toTimestamp(cost.getRunEndTime()));
             ps.setInt(idx++, cost.getDurationSeconds());
+            ps.setBigDecimal(idx++, cost.getDurationHours());
             ps.setString(idx++, cost.getRunStatus());
             ps.setBoolean(idx++, cost.getIsRetry());
             ps.setInt(idx++, cost.getAttemptNumber());
+            ps.setString(idx++, cost.getSparkVersion());
+            ps.setString(idx++, cost.getRuntimeEngine());
+            ps.setString(idx++, cost.getClusterSource());
+            ps.setString(idx++, cost.getWorkloadType());
+            ps.setString(idx++, cost.getRegion());
             ps.setBigDecimal(idx++, cost.getDbuUnitsConsumed());
             ps.setBigDecimal(idx++, cost.getDbuUnitPrice());
             ps.setBigDecimal(idx++, cost.getDbuCostUsd());
@@ -105,8 +123,13 @@ public class CalculatorRunCostRepository {
             ps.setObject(idx++, cost.getConcurrentRunsOnCluster());
             ps.setBigDecimal(idx++, cost.getClusterUtilizationPct());
             ps.setString(idx++, cost.getCalculationVersion());
-            ps.setTimestamp(idx++, Timestamp.valueOf(cost.getCalculationTimestamp()));
+            ps.setTimestamp(idx++, toTimestamp(cost.getCalculationTimestamp()));
             ps.setString(idx++, cost.getCalculatedBy());
+            ps.setTimestamp(idx++, toTimestamp(cost.getCollectionTimestamp()));
+            ps.setString(idx++, cost.getTaskVersion());
+            ps.setString(idx++, cost.getContextId());
+            ps.setString(idx++, cost.getMegdpRunId());
+            ps.setString(idx++, cost.getTenantAbb());
             ps.setTimestamp(idx++, Timestamp.valueOf(LocalDateTime.now()));
             ps.setTimestamp(idx++, Timestamp.valueOf(LocalDateTime.now()));
             return ps;
@@ -122,37 +145,93 @@ public class CalculatorRunCostRepository {
         String sql = """
             INSERT INTO calculator_run_costs (
                 calculator_run_id, reporting_date, calculator_id, calculator_name,
-                databricks_run_id, cluster_id, driver_node_type, worker_node_type,
-                avg_worker_count, spot_instance_used, photon_enabled,
-                run_start_time, run_end_time, duration_seconds, run_status,
+                databricks_run_id, job_id, job_name, cluster_id,
+                driver_node_type, worker_node_type, worker_count,
+                min_workers, max_workers, avg_worker_count, peak_worker_count,
+                spot_instance_used, photon_enabled, autoscale_enabled,
+                autoscale_min_workers, autoscale_max_workers,
+                run_start_time, run_end_time, duration_seconds, duration_hours, run_status,
                 is_retry, attempt_number,
+                spark_version, runtime_engine, cluster_source, workload_type, region,
                 dbu_units_consumed, dbu_unit_price, dbu_cost_usd, dbu_sku,
-                vm_driver_cost_usd, vm_worker_cost_usd, vm_total_cost_usd,
+                vm_driver_cost_usd, vm_worker_cost_usd, vm_total_cost_usd, vm_node_hours,
                 storage_cost_usd, total_cost_usd,
                 allocation_method, confidence_score,
                 calculation_version, calculation_timestamp, calculated_by,
+                collection_timestamp,
+                task_version, context_id, megdp_run_id, tenant_abb,
                 created_at, updated_at
             ) VALUES (
                 :calculatorRunId, :reportingDate, :calculatorId, :calculatorName,
-                :databricksRunId, :clusterId, :driverNodeType, :workerNodeType,
-                :avgWorkerCount, :spotInstanceUsed, :photonEnabled,
-                :runStartTime, :runEndTime, :durationSeconds, :runStatus,
+                :databricksRunId, :jobId, :jobName, :clusterId,
+                :driverNodeType, :workerNodeType, :workerCount,
+                :minWorkers, :maxWorkers, :avgWorkerCount, :peakWorkerCount,
+                :spotInstanceUsed, :photonEnabled, :autoscaleEnabled,
+                :autoscaleMinWorkers, :autoscaleMaxWorkers,
+                :runStartTime, :runEndTime, :durationSeconds, :durationHours, :runStatus,
                 :isRetry, :attemptNumber,
+                :sparkVersion, :runtimeEngine, :clusterSource, :workloadType, :region,
                 :dbuUnitsConsumed, :dbuUnitPrice, :dbuCostUsd, :dbuSku,
-                :vmDriverCostUsd, :vmWorkerCostUsd, :vmTotalCostUsd,
+                :vmDriverCostUsd, :vmWorkerCostUsd, :vmTotalCostUsd, :vmNodeHours,
                 :storageCostUsd, :totalCostUsd,
                 :allocationMethod, :confidenceScore,
                 :calculationVersion, :calculationTimestamp, :calculatedBy,
+                :collectionTimestamp,
+                :taskVersion, :contextId, :megdpRunId, :tenantAbb,
                 NOW(), NOW()
             )
             ON CONFLICT (calculator_run_id, reporting_date)
             DO UPDATE SET
+                calculator_id = EXCLUDED.calculator_id,
+                calculator_name = EXCLUDED.calculator_name,
+                databricks_run_id = EXCLUDED.databricks_run_id,
+                job_id = EXCLUDED.job_id,
+                job_name = EXCLUDED.job_name,
+                cluster_id = EXCLUDED.cluster_id,
+                driver_node_type = EXCLUDED.driver_node_type,
+                worker_node_type = EXCLUDED.worker_node_type,
+                worker_count = EXCLUDED.worker_count,
+                min_workers = EXCLUDED.min_workers,
+                max_workers = EXCLUDED.max_workers,
+                avg_worker_count = EXCLUDED.avg_worker_count,
+                peak_worker_count = EXCLUDED.peak_worker_count,
+                spot_instance_used = EXCLUDED.spot_instance_used,
+                photon_enabled = EXCLUDED.photon_enabled,
+                autoscale_enabled = EXCLUDED.autoscale_enabled,
+                autoscale_min_workers = EXCLUDED.autoscale_min_workers,
+                autoscale_max_workers = EXCLUDED.autoscale_max_workers,
+                run_start_time = EXCLUDED.run_start_time,
+                run_end_time = EXCLUDED.run_end_time,
+                duration_seconds = EXCLUDED.duration_seconds,
+                duration_hours = EXCLUDED.duration_hours,
+                run_status = EXCLUDED.run_status,
+                is_retry = EXCLUDED.is_retry,
+                attempt_number = EXCLUDED.attempt_number,
+                spark_version = EXCLUDED.spark_version,
+                runtime_engine = EXCLUDED.runtime_engine,
+                cluster_source = EXCLUDED.cluster_source,
+                workload_type = EXCLUDED.workload_type,
+                region = EXCLUDED.region,
+                dbu_units_consumed = EXCLUDED.dbu_units_consumed,
+                dbu_unit_price = EXCLUDED.dbu_unit_price,
                 dbu_cost_usd = EXCLUDED.dbu_cost_usd,
+                dbu_sku = EXCLUDED.dbu_sku,
+                vm_driver_cost_usd = EXCLUDED.vm_driver_cost_usd,
+                vm_worker_cost_usd = EXCLUDED.vm_worker_cost_usd,
                 vm_total_cost_usd = EXCLUDED.vm_total_cost_usd,
+                vm_node_hours = EXCLUDED.vm_node_hours,
                 storage_cost_usd = EXCLUDED.storage_cost_usd,
                 total_cost_usd = EXCLUDED.total_cost_usd,
+                allocation_method = EXCLUDED.allocation_method,
                 confidence_score = EXCLUDED.confidence_score,
+                calculation_version = EXCLUDED.calculation_version,
                 calculation_timestamp = EXCLUDED.calculation_timestamp,
+                calculated_by = EXCLUDED.calculated_by,
+                collection_timestamp = EXCLUDED.collection_timestamp,
+                task_version = EXCLUDED.task_version,
+                context_id = EXCLUDED.context_id,
+                megdp_run_id = EXCLUDED.megdp_run_id,
+                tenant_abb = EXCLUDED.tenant_abb,
                 updated_at = NOW()
         """;
 
@@ -162,18 +241,33 @@ public class CalculatorRunCostRepository {
                 .addValue("calculatorId", cost.getCalculatorId())
                 .addValue("calculatorName", cost.getCalculatorName())
                 .addValue("databricksRunId", cost.getDatabricksRunId())
+                .addValue("jobId", cost.getJobId())
+                .addValue("jobName", cost.getJobName())
                 .addValue("clusterId", cost.getClusterId())
                 .addValue("driverNodeType", cost.getDriverNodeType())
                 .addValue("workerNodeType", cost.getWorkerNodeType())
+                .addValue("workerCount", cost.getWorkerCount())
+                .addValue("minWorkers", cost.getMinWorkers())
+                .addValue("maxWorkers", cost.getMaxWorkers())
                 .addValue("avgWorkerCount", cost.getAvgWorkerCount())
+                .addValue("peakWorkerCount", cost.getPeakWorkerCount())
                 .addValue("spotInstanceUsed", cost.getSpotInstanceUsed())
                 .addValue("photonEnabled", cost.getPhotonEnabled())
+                .addValue("autoscaleEnabled", cost.getAutoscaleEnabled())
+                .addValue("autoscaleMinWorkers", cost.getAutoscaleMinWorkers())
+                .addValue("autoscaleMaxWorkers", cost.getAutoscaleMaxWorkers())
                 .addValue("runStartTime", cost.getRunStartTime())
                 .addValue("runEndTime", cost.getRunEndTime())
                 .addValue("durationSeconds", cost.getDurationSeconds())
+                .addValue("durationHours", cost.getDurationHours())
                 .addValue("runStatus", cost.getRunStatus())
                 .addValue("isRetry", cost.getIsRetry())
                 .addValue("attemptNumber", cost.getAttemptNumber())
+                .addValue("sparkVersion", cost.getSparkVersion())
+                .addValue("runtimeEngine", cost.getRuntimeEngine())
+                .addValue("clusterSource", cost.getClusterSource())
+                .addValue("workloadType", cost.getWorkloadType())
+                .addValue("region", cost.getRegion())
                 .addValue("dbuUnitsConsumed", cost.getDbuUnitsConsumed())
                 .addValue("dbuUnitPrice", cost.getDbuUnitPrice())
                 .addValue("dbuCostUsd", cost.getDbuCostUsd())
@@ -181,38 +275,103 @@ public class CalculatorRunCostRepository {
                 .addValue("vmDriverCostUsd", cost.getVmDriverCostUsd())
                 .addValue("vmWorkerCostUsd", cost.getVmWorkerCostUsd())
                 .addValue("vmTotalCostUsd", cost.getVmTotalCostUsd())
+                .addValue("vmNodeHours", cost.getVmNodeHours())
                 .addValue("storageCostUsd", cost.getStorageCostUsd())
                 .addValue("totalCostUsd", cost.getTotalCostUsd())
                 .addValue("allocationMethod", cost.getAllocationMethod())
                 .addValue("confidenceScore", cost.getConfidenceScore())
                 .addValue("calculationVersion", cost.getCalculationVersion())
                 .addValue("calculationTimestamp", cost.getCalculationTimestamp())
-                .addValue("calculatedBy", cost.getCalculatedBy());
+                .addValue("calculatedBy", cost.getCalculatedBy())
+                .addValue("collectionTimestamp", cost.getCollectionTimestamp())
+                .addValue("taskVersion", cost.getTaskVersion())
+                .addValue("contextId", cost.getContextId())
+                .addValue("megdpRunId", cost.getMegdpRunId())
+                .addValue("tenantAbb", cost.getTenantAbb());
 
         namedParameterJdbcTemplate.update(sql, params);
     }
 
     /**
-     * Batch upsert for multiple cost records (more efficient)
+     * Batch upsert for multiple cost records (more efficient) 
      */
     public void batchUpsert(List<CalculatorRunCost> costs) {
         String sql = """
             INSERT INTO calculator_run_costs (
                 calculator_run_id, reporting_date, calculator_id, calculator_name,
-                databricks_run_id, cluster_id, driver_node_type, worker_node_type,
-                avg_worker_count, spot_instance_used, photon_enabled,
-                run_start_time, run_end_time, duration_seconds, run_status,
+                databricks_run_id, job_id, job_name, cluster_id,
+                driver_node_type, worker_node_type, worker_count,
+                min_workers, max_workers, avg_worker_count, peak_worker_count,
+                spot_instance_used, photon_enabled, autoscale_enabled,
+                autoscale_min_workers, autoscale_max_workers,
+                run_start_time, run_end_time, duration_seconds, duration_hours, run_status,
                 is_retry, attempt_number,
-                dbu_cost_usd, vm_total_cost_usd, storage_cost_usd, total_cost_usd,
+                spark_version, runtime_engine, cluster_source, workload_type, region,
+                dbu_units_consumed, dbu_unit_price, dbu_cost_usd, dbu_sku,
+                vm_driver_cost_usd, vm_worker_cost_usd, vm_total_cost_usd, vm_node_hours,
+                storage_cost_usd, total_cost_usd,
                 allocation_method, confidence_score,
-                calculation_version, calculation_timestamp,
+                calculation_version, calculation_timestamp, calculated_by,
+                collection_timestamp,
+                task_version, context_id, megdp_run_id, tenant_abb,
                 created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW()
+            )
             ON CONFLICT (calculator_run_id, reporting_date)
             DO UPDATE SET
-                total_cost_usd = EXCLUDED.total_cost_usd,
+                calculator_id = EXCLUDED.calculator_id,
+                calculator_name = EXCLUDED.calculator_name,
+                databricks_run_id = EXCLUDED.databricks_run_id,
+                job_id = EXCLUDED.job_id,
+                job_name = EXCLUDED.job_name,
+                cluster_id = EXCLUDED.cluster_id,
+                driver_node_type = EXCLUDED.driver_node_type,
+                worker_node_type = EXCLUDED.worker_node_type,
+                worker_count = EXCLUDED.worker_count,
+                min_workers = EXCLUDED.min_workers,
+                max_workers = EXCLUDED.max_workers,
+                avg_worker_count = EXCLUDED.avg_worker_count,
+                peak_worker_count = EXCLUDED.peak_worker_count,
+                spot_instance_used = EXCLUDED.spot_instance_used,
+                photon_enabled = EXCLUDED.photon_enabled,
+                autoscale_enabled = EXCLUDED.autoscale_enabled,
+                autoscale_min_workers = EXCLUDED.autoscale_min_workers,
+                autoscale_max_workers = EXCLUDED.autoscale_max_workers,
+                run_start_time = EXCLUDED.run_start_time,
+                run_end_time = EXCLUDED.run_end_time,
+                duration_seconds = EXCLUDED.duration_seconds,
+                duration_hours = EXCLUDED.duration_hours,
+                run_status = EXCLUDED.run_status,
+                is_retry = EXCLUDED.is_retry,
+                attempt_number = EXCLUDED.attempt_number,
+                spark_version = EXCLUDED.spark_version,
+                runtime_engine = EXCLUDED.runtime_engine,
+                cluster_source = EXCLUDED.cluster_source,
+                workload_type = EXCLUDED.workload_type,
+                region = EXCLUDED.region,
+                dbu_units_consumed = EXCLUDED.dbu_units_consumed,
+                dbu_unit_price = EXCLUDED.dbu_unit_price,
                 dbu_cost_usd = EXCLUDED.dbu_cost_usd,
+                dbu_sku = EXCLUDED.dbu_sku,
+                vm_driver_cost_usd = EXCLUDED.vm_driver_cost_usd,
+                vm_worker_cost_usd = EXCLUDED.vm_worker_cost_usd,
                 vm_total_cost_usd = EXCLUDED.vm_total_cost_usd,
+                vm_node_hours = EXCLUDED.vm_node_hours,
+                storage_cost_usd = EXCLUDED.storage_cost_usd,
+                total_cost_usd = EXCLUDED.total_cost_usd,
+                allocation_method = EXCLUDED.allocation_method,
+                confidence_score = EXCLUDED.confidence_score,
+                calculation_version = EXCLUDED.calculation_version,
+                calculation_timestamp = EXCLUDED.calculation_timestamp,
+                calculated_by = EXCLUDED.calculated_by,
+                collection_timestamp = EXCLUDED.collection_timestamp,
+                task_version = EXCLUDED.task_version,
+                context_id = EXCLUDED.context_id,
+                megdp_run_id = EXCLUDED.megdp_run_id,
+                tenant_abb = EXCLUDED.tenant_abb,
                 updated_at = NOW()
         """;
 
@@ -223,26 +382,53 @@ public class CalculatorRunCostRepository {
             ps.setString(idx++, cost.getCalculatorId());
             ps.setString(idx++, cost.getCalculatorName());
             ps.setLong(idx++, cost.getDatabricksRunId());
+            ps.setObject(idx++, cost.getJobId());
+            ps.setString(idx++, cost.getJobName());
             ps.setString(idx++, cost.getClusterId());
             ps.setString(idx++, cost.getDriverNodeType());
             ps.setString(idx++, cost.getWorkerNodeType());
+            ps.setObject(idx++, cost.getWorkerCount());
+            ps.setObject(idx++, cost.getMinWorkers());
+            ps.setObject(idx++, cost.getMaxWorkers());
             ps.setBigDecimal(idx++, cost.getAvgWorkerCount());
+            ps.setObject(idx++, cost.getPeakWorkerCount());
             ps.setBoolean(idx++, cost.getSpotInstanceUsed());
             ps.setBoolean(idx++, cost.getPhotonEnabled());
-            ps.setTimestamp(idx++, Timestamp.valueOf(cost.getRunStartTime()));
-            ps.setTimestamp(idx++, Timestamp.valueOf(cost.getRunEndTime()));
+            ps.setObject(idx++, cost.getAutoscaleEnabled());
+            ps.setObject(idx++, cost.getAutoscaleMinWorkers());
+            ps.setObject(idx++, cost.getAutoscaleMaxWorkers());
+            ps.setTimestamp(idx++, toTimestamp(cost.getRunStartTime()));
+            ps.setTimestamp(idx++, toTimestamp(cost.getRunEndTime()));
             ps.setInt(idx++, cost.getDurationSeconds());
+            ps.setBigDecimal(idx++, cost.getDurationHours());
             ps.setString(idx++, cost.getRunStatus());
             ps.setBoolean(idx++, cost.getIsRetry());
             ps.setInt(idx++, cost.getAttemptNumber());
+            ps.setString(idx++, cost.getSparkVersion());
+            ps.setString(idx++, cost.getRuntimeEngine());
+            ps.setString(idx++, cost.getClusterSource());
+            ps.setString(idx++, cost.getWorkloadType());
+            ps.setString(idx++, cost.getRegion());
+            ps.setBigDecimal(idx++, cost.getDbuUnitsConsumed());
+            ps.setBigDecimal(idx++, cost.getDbuUnitPrice());
             ps.setBigDecimal(idx++, cost.getDbuCostUsd());
+            ps.setString(idx++, cost.getDbuSku());
+            ps.setBigDecimal(idx++, cost.getVmDriverCostUsd());
+            ps.setBigDecimal(idx++, cost.getVmWorkerCostUsd());
             ps.setBigDecimal(idx++, cost.getVmTotalCostUsd());
+            ps.setBigDecimal(idx++, cost.getVmNodeHours());
             ps.setBigDecimal(idx++, cost.getStorageCostUsd());
             ps.setBigDecimal(idx++, cost.getTotalCostUsd());
             ps.setString(idx++, cost.getAllocationMethod());
             ps.setBigDecimal(idx++, cost.getConfidenceScore());
             ps.setString(idx++, cost.getCalculationVersion());
-            ps.setTimestamp(idx++, Timestamp.valueOf(cost.getCalculationTimestamp()));
+            ps.setTimestamp(idx++, toTimestamp(cost.getCalculationTimestamp()));
+            ps.setString(idx++, cost.getCalculatedBy());
+            ps.setTimestamp(idx++, toTimestamp(cost.getCollectionTimestamp()));
+            ps.setString(idx++, cost.getTaskVersion());
+            ps.setString(idx++, cost.getContextId());
+            ps.setString(idx++, cost.getMegdpRunId());
+            ps.setString(idx++, cost.getTenantAbb());
         });
 
         log.info("Batch upserted {} cost records", costs.size());
@@ -345,7 +531,7 @@ public class CalculatorRunCostRepository {
                 vm_total_cost_usd,
                 storage_cost_usd,
                 total_cost_usd,
-                avg_worker_count,
+                COALESCE(worker_count, avg_worker_count) as worker_count,
                 spot_instance_used,
                 photon_enabled,
                 is_retry,
@@ -461,7 +647,7 @@ public class CalculatorRunCostRepository {
                 vm_total_cost_usd,
                 storage_cost_usd,
                 total_cost_usd,
-                avg_worker_count,
+                COALESCE(worker_count, avg_worker_count) as worker_count,
                 spot_instance_used,
                 photon_enabled,
                 is_retry,
@@ -487,6 +673,10 @@ public class CalculatorRunCostRepository {
     // =========================================================================
     // ROW MAPPERS
     // =========================================================================
+
+    private static Timestamp toTimestamp(LocalDateTime dateTime) {
+        return dateTime == null ? null : Timestamp.valueOf(dateTime);
+    }
 
     private RowMapper<DailyCostTrend> dailyCostTrendRowMapper() {
         return (rs, rowNum) -> new DailyCostTrend(
@@ -531,7 +721,7 @@ public class CalculatorRunCostRepository {
                 rs.getBigDecimal("vm_total_cost_usd"),
                 rs.getBigDecimal("storage_cost_usd"),
                 rs.getBigDecimal("total_cost_usd"),
-                rs.getBigDecimal("avg_worker_count"),
+                rs.getBigDecimal("worker_count"),
                 rs.getBoolean("spot_instance_used"),
                 rs.getBoolean("photon_enabled"),
                 rs.getBoolean("is_retry"),
@@ -582,15 +772,22 @@ public class CalculatorRunCostRepository {
             cost.setCalculatorId(rs.getString("calculator_id"));
             cost.setCalculatorName(rs.getString("calculator_name"));
             cost.setDatabricksRunId(rs.getLong("databricks_run_id"));
+            cost.setJobId(rs.getObject("job_id", Long.class));
+            cost.setJobName(rs.getString("job_name"));
             cost.setClusterId(rs.getString("cluster_id"));
             cost.setDriverNodeType(rs.getString("driver_node_type"));
             cost.setWorkerNodeType(rs.getString("worker_node_type"));
+            cost.setWorkerCount(rs.getObject("worker_count", Integer.class));
             cost.setAvgWorkerCount(rs.getBigDecimal("avg_worker_count"));
             cost.setSpotInstanceUsed(rs.getBoolean("spot_instance_used"));
             cost.setPhotonEnabled(rs.getBoolean("photon_enabled"));
+            cost.setAutoscaleEnabled(rs.getObject("autoscale_enabled", Boolean.class));
+            cost.setAutoscaleMinWorkers(rs.getObject("autoscale_min_workers", Integer.class));
+            cost.setAutoscaleMaxWorkers(rs.getObject("autoscale_max_workers", Integer.class));
             cost.setRunStartTime(rs.getTimestamp("run_start_time").toLocalDateTime());
             cost.setRunEndTime(rs.getTimestamp("run_end_time").toLocalDateTime());
             cost.setDurationSeconds(rs.getInt("duration_seconds"));
+            cost.setDurationHours(rs.getBigDecimal("duration_hours"));
             cost.setRunStatus(rs.getString("run_status"));
             cost.setDbuCostUsd(rs.getBigDecimal("dbu_cost_usd"));
             cost.setVmTotalCostUsd(rs.getBigDecimal("vm_total_cost_usd"));
@@ -598,6 +795,19 @@ public class CalculatorRunCostRepository {
             cost.setTotalCostUsd(rs.getBigDecimal("total_cost_usd"));
             cost.setAllocationMethod(rs.getString("allocation_method"));
             cost.setConfidenceScore(rs.getBigDecimal("confidence_score"));
+            cost.setSparkVersion(rs.getString("spark_version"));
+            cost.setRuntimeEngine(rs.getString("runtime_engine"));
+            cost.setClusterSource(rs.getString("cluster_source"));
+            cost.setWorkloadType(rs.getString("workload_type"));
+            cost.setRegion(rs.getString("region"));
+            Timestamp collectionTs = rs.getTimestamp("collection_timestamp");
+            if (collectionTs != null) {
+                cost.setCollectionTimestamp(collectionTs.toLocalDateTime());
+            }
+            cost.setTaskVersion(rs.getString("task_version"));
+            cost.setContextId(rs.getString("context_id"));
+            cost.setMegdpRunId(rs.getString("megdp_run_id"));
+            cost.setTenantAbb(rs.getString("tenant_abb"));
             return cost;
         };
     }

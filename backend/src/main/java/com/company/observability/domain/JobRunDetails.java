@@ -87,5 +87,6 @@ public class JobRunDetails {
 
     private OffsetDateTime collectionTimestamp;
 
+
     // Lombok generates getters/setters
 }

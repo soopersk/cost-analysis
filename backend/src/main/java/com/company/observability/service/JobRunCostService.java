@@ -67,6 +67,11 @@ public class JobRunCostService {
         return costs.size();
     }
 
+    /**
+     *
+     * @param JobRunDetails
+     * @return CalculatorRunCost
+     */
     public CalculatorRunCost toCalculatorRunCost(JobRunDetails details) {
         BigDecimal durationHours = calculateDurationHours(details);
         int workerCount = details.getWorkerCount();

@@ -16,3 +16,4 @@ ALTER TABLE calculator_run_costs
     ADD COLUMN IF NOT EXISTS megdp_run_id VARCHAR(100),
     ADD COLUMN IF NOT EXISTS tenant_abb VARCHAR(50),
     ADD COLUMN IF NOT EXISTS collection_timestamp TIMESTAMP;
+

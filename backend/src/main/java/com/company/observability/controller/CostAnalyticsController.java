@@ -18,7 +18,7 @@ public class CostAnalyticsController {
     private final CostAnalyticsService costAnalyticsService;
 
     /**
-     * Get comprehensive cost analytics dashboard data
+     * Get comprehensive cost analytics dashboard data.
      */
     @GetMapping
     public ResponseEntity<CostDashboardResponse> getDashboardData(

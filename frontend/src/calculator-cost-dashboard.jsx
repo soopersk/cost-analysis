@@ -596,7 +596,7 @@ const CalculatorCostDashboard = () => {
             </ResponsiveContainer>
           </div>
 
-          {/* Cost Breakdown Pie */}
+          {/* Cost Breakdown Pie  */}
           <div
             className="rounded-3xl shadow-sm p-7"
             style={{

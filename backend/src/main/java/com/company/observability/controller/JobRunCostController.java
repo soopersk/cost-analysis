@@ -17,7 +17,7 @@ public class JobRunCostController {
     private final JobRunCostService jobRunCostService;
 
     /**
-     * Ingest job run details and calculate costs on the backend.
+     * Ingest job run details and calculate costs on the backend
      */
     @PostMapping("/costs")
     public ResponseEntity<Map<String, Object>> ingestJobRunCosts(
