@@ -1,5 +1,7 @@
 package com.company.observability.service;
 
+import com.company.observability.domain.CalculatorRunCost;
+import com.company.observability.domain.RunFrequency;
 import com.company.observability.dto.*;
 import com.company.observability.repository.CalculatorRunCostRepository;
 import lombok.RequiredArgsConstructor;
@@ -11,108 +13,192 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Cost analytics service.
+ *
+ * <p>Every public method accepts {@link RunFrequency} as a first-class
+ * parameter. Callers must always specify whether they want DAILY or MONTHLY
+ * cost analysis — there is no default that silently mixes both cadences.
+ */
 @Service
 @RequiredArgsConstructor
 public class CostAnalyticsService {
 
     private final CalculatorRunCostRepository costRepository;
 
-    public CostDashboardResponse getDashboardData(String period, String calculatorId) {
-        LocalDate endDate = LocalDate.now();
-        LocalDate startDate = calculateStartDate(period, endDate);
-        
-        String calcFilter = "all".equals(calculatorId) ? null : calculatorId;
-        
+    // -------------------------------------------------------------------------
+    // Dashboard
+    // -------------------------------------------------------------------------
+
+    /**
+     * Full dashboard payload for a given frequency and period.
+     *
+     * @param frequency   DAILY or MONTHLY — determines which runs are included
+     * @param period      "7d", "30d", or "90d" relative to today's reporting date
+     * @param calculatorId  specific calculator, or null / "all" for all
+     */
+    public CostDashboardResponse getDashboardData(
+            RunFrequency frequency, String period, String calculatorId) {
+
+        LocalDate endDate   = LocalDate.now();
+        LocalDate startDate = resolveStartDate(period, endDate);
+        String    calcFilter = "all".equals(calculatorId) ? null : calculatorId;
+
         return CostDashboardResponse.builder()
-                .dailyCosts(getDailyTrends(startDate, endDate, calcFilter))
-                .calculatorCosts(getCalculatorCostSummary(startDate, endDate))
-                .recentRuns(getRecentRuns(20, calcFilter, null))
-                .costBreakdown(getCostBreakdown(startDate, endDate))
-                .efficiency(getEfficiencyMetrics(startDate, endDate))
+                .frequency(frequency)
+                .dailyCosts(getCostTrend(frequency, startDate, endDate, calcFilter))
+                .calculatorCosts(getCalculatorCostSummary(frequency, startDate, endDate))
+                .recentRuns(getRecentRuns(frequency, 20, calcFilter, null))
+                .costBreakdown(getCostBreakdown(frequency, startDate, endDate))
+                .efficiency(getEfficiencyMetrics(frequency, startDate, endDate))
                 .period(period)
                 .startDate(startDate)
                 .endDate(endDate)
                 .build();
     }
 
+    // -------------------------------------------------------------------------
+    // Cost trend (grouped by reporting_date)
+    // -------------------------------------------------------------------------
+
+    public List<DailyCostTrend> getCostTrend(
+            RunFrequency frequency, LocalDate startDate, LocalDate endDate, String calculatorId) {
+        return calculatorId == null
+                ? costRepository.getCostTrendAllCalculators(frequency, startDate, endDate)
+                : costRepository.getCostTrendByCalculator(frequency, startDate, endDate, calculatorId);
+    }
+
+    // -------------------------------------------------------------------------
+    // Month-over-month trend per (calculator, frequency)
+    // -------------------------------------------------------------------------
+
     /**
-     *
-     * @param startDate
-     * @param endDate
-     * @param calculatorId
-     * @return
+     * Month-over-month cost trend for one (calculator, frequency) pair.
+     * DAILY and MONTHLY trends for the same calculator are always separate series.
      */
-    public List<DailyCostTrend> getDailyTrends(LocalDate startDate, LocalDate endDate, String calculatorId) {
-        if (calculatorId == null) {
-            return costRepository.getDailyCostTrendsAllCalculators(startDate, endDate);
-        } else {
-            return costRepository.getDailyCostTrendsByCalculator(startDate, endDate, calculatorId);
-        }
+    public List<MonthlyCostTrend> getMonthlyCostTrend(
+            String calculatorId, RunFrequency frequency, int months) {
+        return costRepository.getMonthlyCostTrend(calculatorId, frequency, months);
     }
 
-    public List<CalculatorCostSummary> getCalculatorCostSummary(LocalDate startDate, LocalDate endDate) {
-        return costRepository.getCalculatorCostSummary(startDate, endDate);
+    // -------------------------------------------------------------------------
+    // Per-(calculator, frequency) summary
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns one summary row per (calculator, frequency) pair.
+     * If {@code frequency} is null, all frequencies are returned together
+     * (useful for a cross-frequency admin view).
+     */
+    public List<CalculatorCostSummary> getCalculatorCostSummary(
+            RunFrequency frequency, LocalDate startDate, LocalDate endDate) {
+        return costRepository.getCalculatorCostSummary(frequency, startDate, endDate);
     }
 
-    public List<RecentRunCost> getRecentRuns(int limit, String calculatorId, String status) {
-        return costRepository.getRecentRunsWithCost(limit, calculatorId, status);
-    }
-
-    public CostBreakdown getCostBreakdown(LocalDate startDate, LocalDate endDate) {
-        return costRepository.getCostBreakdown(startDate, endDate);
-    }
-
-    public EfficiencyMetrics getEfficiencyMetrics(LocalDate startDate, LocalDate endDate) {
-        return costRepository.getEfficiencyMetrics(startDate, endDate);
-    }
-
-    public List<CalculatorCostSummary> getTopExpensiveCalculators(int limit, LocalDate startDate, LocalDate endDate) {
-        return costRepository.getCalculatorCostSummary(startDate, endDate).stream()
-                .sorted((a, b) -> b.getTotalCost().compareTo(a.getTotalCost()))
+    public List<CalculatorCostSummary> getTopExpensiveCalculators(
+            RunFrequency frequency, int limit, LocalDate startDate, LocalDate endDate) {
+        return costRepository.getCalculatorCostSummary(frequency, startDate, endDate)
+                .stream()
                 .limit(limit)
                 .collect(Collectors.toList());
     }
 
-    public List<CostAnomaly> getCostAnomalies(double threshold, LocalDate startDate, LocalDate endDate) {
-        return costRepository.getCostAnomalies(threshold, startDate, endDate);
+    // -------------------------------------------------------------------------
+    // Recent runs
+    // -------------------------------------------------------------------------
+
+    public List<RecentRunCost> getRecentRuns(
+            RunFrequency frequency, int limit, String calculatorId, String status) {
+        return costRepository.getRecentRunsWithCost(limit, calculatorId, frequency, status);
     }
 
-    public byte[] exportToCsv(LocalDate startDate, LocalDate endDate, String calculatorId) {
-        List<RecentRunCost> runs = costRepository.getAllRunsForExport(startDate, endDate, calculatorId);
+    // -------------------------------------------------------------------------
+    // Cost breakdown
+    // -------------------------------------------------------------------------
+
+    public CostBreakdown getCostBreakdown(
+            RunFrequency frequency, LocalDate startDate, LocalDate endDate) {
+        return costRepository.getCostBreakdown(frequency, startDate, endDate);
+    }
+
+    // -------------------------------------------------------------------------
+    // Efficiency metrics
+    // -------------------------------------------------------------------------
+
+    public EfficiencyMetrics getEfficiencyMetrics(
+            RunFrequency frequency, LocalDate startDate, LocalDate endDate) {
+        return costRepository.getEfficiencyMetrics(frequency, startDate, endDate);
+    }
+
+    // -------------------------------------------------------------------------
+    // Anomaly detection
+    // -------------------------------------------------------------------------
+
+    /**
+     * Anomalies are always scoped to the same (calculator, frequency) pair —
+     * a MONTHLY run is never benchmarked against DAILY run averages.
+     */
+    public List<CostAnomaly> getCostAnomalies(
+            RunFrequency frequency, double threshold,
+            LocalDate startDate, LocalDate endDate) {
+        return costRepository.getCostAnomalies(frequency, threshold, startDate, endDate);
+    }
+
+    // -------------------------------------------------------------------------
+    // Export
+    // -------------------------------------------------------------------------
+
+    public byte[] exportToCsv(
+            RunFrequency frequency, LocalDate startDate, LocalDate endDate, String calculatorId) {
+
+        List<CalculatorRunCost> runs =
+                costRepository.getAllRunsForExport(frequency, startDate, endDate, calculatorId);
 
         StringBuilder csv = new StringBuilder();
-        csv.append("Run ID,Calculator ID,Calculator Name,Start Time,End Time,Duration (sec),")
-                .append("Status,DBU Cost,VM Cost,Storage Cost,Total Cost,Worker Count,Spot Instance,Photon Enabled\n");
+        csv.append("run_id,calculator_id,calculator_name,frequency,reporting_date,job_name,")
+                .append("start_time,end_time,duration_seconds,status,")
+                .append("dbu_cost_usd,vm_cost_usd,storage_cost_usd,total_cost_usd,")
+                .append("worker_count,spot_instances,photon_enabled,tenant_abb\n");
 
-        for (RecentRunCost run : runs) {
-            csv.append(String.format("%s,%s,%s,%s,%s,%d,%s,%.2f,%.2f,%.2f,%.2f,%d,%s,%s\n",
-                    run.getRunId(),
-                    run.getCalculatorId(),
-                    run.getCalculatorName(),
-                    run.getStartTime(),
-                    run.getEndTime(),
-                    run.getDurationSeconds() != null ? run.getDurationSeconds() : 0,
-                    run.getStatus(),
-                    run.getDbuCost() != null ? run.getDbuCost() : BigDecimal.ZERO,
-                    run.getVmCost() != null ? run.getVmCost() : BigDecimal.ZERO,
-                    run.getStorageCost() != null ? run.getStorageCost() : BigDecimal.ZERO,
-                    run.getTotalCost() != null ? run.getTotalCost() : BigDecimal.ZERO,
-                    run.getWorkerCount() != null ? run.getWorkerCount().intValue() : 0,
-                    run.getSpotInstance() != null ? run.getSpotInstance() : false,
-                    run.getPhotonEnabled() != null ? run.getPhotonEnabled() : false
+        for (CalculatorRunCost r : runs) {
+            csv.append(String.format("%d,%s,%s,%s,%s,%s,%s,%s,%d,%s,%.4f,%.4f,%.4f,%.4f,%s,%s,%s,%s\n",
+                    r.getRunId(),
+                    r.getCalculatorId(),
+                    r.getCalculatorName(),
+                    r.getFrequency().name(),
+                    r.getReportingDate(),
+                    r.getJobName(),
+                    r.getStartTime(),
+                    r.getEndTime(),
+                    r.getDurationSeconds(),
+                    r.getStatus(),
+                    orZero(r.getDbuCostUsd()),
+                    orZero(r.getVmCostUsd()),
+                    orZero(r.getStorageCostUsd()),
+                    orZero(r.getTotalCostUsd()),
+                    r.getWorkerCount(),
+                    r.getSpotInstances(),
+                    r.getPhotonEnabled(),
+                    r.getTenantAbb()
             ));
         }
 
         return csv.toString().getBytes();
     }
 
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
 
-    private LocalDate calculateStartDate(String period, LocalDate endDate) {
-        return switch (period) {
-            case "7d" -> endDate.minus(7, ChronoUnit.DAYS);
-            case "30d" -> endDate.minus(30, ChronoUnit.DAYS);
-            case "90d" -> endDate.minus(90, ChronoUnit.DAYS);
-            default -> endDate.minus(30, ChronoUnit.DAYS);
-        };
+    private LocalDate resolveStartDate(String period, LocalDate endDate) {
+        if (period != null && period.matches("\\d+d")) {
+            int days = Integer.parseInt(period.substring(0, period.length() - 1));
+            return endDate.minusDays(days);
+        }
+        return endDate.minusDays(30);
+    }
+
+    private BigDecimal orZero(BigDecimal v) {
+        return v != null ? v : BigDecimal.ZERO;
     }
 }

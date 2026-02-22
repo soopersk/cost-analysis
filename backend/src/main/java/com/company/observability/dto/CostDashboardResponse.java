@@ -1,5 +1,6 @@
 package com.company.observability.dto;
 
+import com.company.observability.domain.RunFrequency;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,6 +15,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CostDashboardResponse {
+    private RunFrequency frequency;
     private List<DailyCostTrend> dailyCosts;
     private List<CalculatorCostSummary> calculatorCosts;
     private List<RecentRunCost> recentRuns;

@@ -2,3 +2,94 @@
 
 /* Enable class-based dark mode */
 @variant dark (&:where(.dark, .dark *));
+
+/* ── Global typography ───────────────────────────── */
+body {
+  font-family: 'Jost', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Serif display font for cost figures */
+.font-display {
+  font-family: 'DM Serif Display', serif;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tabular numbers for all monetary values */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ── Entrance animations ────────────────────────────── */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes numberReveal {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.35s ease-out both;
+}
+
+.animate-number {
+  animation: numberReveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Staggered delays for stat cards */
+.delay-0  { animation-delay: 0ms; }
+.delay-75 { animation-delay: 75ms; }
+.delay-150 { animation-delay: 150ms; }
+.delay-225 { animation-delay: 225ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-375 { animation-delay: 375ms; }
+
+/* ── Dot-grid background texture ───────────────────── */
+.bg-dot-grid-light {
+  background-image: radial-gradient(circle, #d7d7d7 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.bg-dot-grid-dark {
+  background-image: radial-gradient(circle, #444 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* ── Stat card number ───────────────────────────────── */
+.stat-value {
+  font-family: 'DM Serif Display', serif;
+  font-size: 2.25rem;    /* 36px */
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+/* ── Chart headings ─────────────────────────────────── */
+.section-heading {
+  font-family: 'Jost', sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* ── Trend badge ────────────────────────────────────── */
+.trend-up   { color: #90A723; }
+.trend-down { color: #BD000C; }
+
+/* ── Scrollbar (Webkit) ─────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #D7D7D7; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #AAAAAA; }

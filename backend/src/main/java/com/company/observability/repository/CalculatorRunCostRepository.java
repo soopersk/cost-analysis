@@ -1,20 +1,18 @@
 package com.company.observability.repository;
 
-import com.company.observability.dto.*;
 import com.company.observability.domain.CalculatorRunCost;
+import com.company.observability.domain.RunFrequency;
+import com.company.observability.dto.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -28,517 +26,287 @@ import java.util.Optional;
 @Slf4j
 public class CalculatorRunCostRepository {
 
-    private final JdbcTemplate jdbcTemplate;
-    private final NamedParameterJdbcTemplate namedParameterJdbcTemplate;
+    private final JdbcTemplate jdbc;
+    private final NamedParameterJdbcTemplate namedJdbc;
 
     // =========================================================================
-    // INSERT / UPDATE OPERATIONS
+    // WRITE
     // =========================================================================
 
     /**
-     * Insert a new cost record
+     * Idempotent batch upsert.
+     *
+     * <p>ON CONFLICT (run_id): mutable fields (status, costs, end timing) are
+     * updated; immutable identifiers and scheduling dimensions (frequency,
+     * reporting_date) are left unchanged to protect historical records.
      */
-    public Long insert(CalculatorRunCost cost) {
+    public void batchUpsert(List<CalculatorRunCost> runs) {
+        if (runs.isEmpty()) return;
+
+        // language=sql
         String sql = """
             INSERT INTO calculator_run_costs (
-                calculator_run_id, reporting_date, calculator_id, calculator_name,
-                databricks_run_id, job_id, job_name, cluster_id,
+                run_id, job_id, job_name,
+                calculator_id, calculator_name,
+                frequency, reporting_date,
+                cluster_id,
+                start_time, end_time, duration_seconds, duration_hours,
+                status,
                 driver_node_type, worker_node_type, worker_count,
-                min_workers, max_workers, avg_worker_count, peak_worker_count,
-                spot_instance_used, photon_enabled, autoscale_enabled,
-                autoscale_min_workers, autoscale_max_workers,
-                run_start_time, run_end_time, duration_seconds, duration_hours, run_status,
-                is_retry, attempt_number,
+                spot_instances, photon_enabled,
                 spark_version, runtime_engine, cluster_source, workload_type, region,
-                dbu_units_consumed, dbu_unit_price, dbu_cost_usd, dbu_sku,
-                vm_driver_cost_usd, vm_worker_cost_usd, vm_total_cost_usd, vm_node_hours,
-                storage_input_gb, storage_output_gb, storage_cost_usd,
-                network_egress_gb, network_cost_usd, total_cost_usd,
-                allocation_method, confidence_score, concurrent_runs_on_cluster,
-                cluster_utilization_pct, calculation_version, calculation_timestamp,
-                calculated_by, collection_timestamp,
+                autoscale_enabled, autoscale_min, autoscale_max,
                 task_version, context_id, megdp_run_id, tenant_abb,
-                created_at, updated_at
+                dbu_cost_usd, vm_cost_usd, storage_cost_usd, total_cost_usd
             ) VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW()
-            )
-            RETURNING cost_id
-        """;
-
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-
-        jdbcTemplate.update(connection -> {
-            var ps = connection.prepareStatement(sql, new String[]{"cost_id"});
-            int idx = 1;
-            ps.setString(idx++, cost.getCalculatorRunId());
-            ps.setObject(idx++, cost.getReportingDate());
-            ps.setString(idx++, cost.getCalculatorId());
-            ps.setString(idx++, cost.getCalculatorName());
-            ps.setLong(idx++, cost.getDatabricksRunId());
-            ps.setObject(idx++, cost.getJobId());
-            ps.setString(idx++, cost.getJobName());
-            ps.setString(idx++, cost.getClusterId());
-            ps.setString(idx++, cost.getDriverNodeType());
-            ps.setString(idx++, cost.getWorkerNodeType());
-            ps.setObject(idx++, cost.getWorkerCount());
-            ps.setObject(idx++, cost.getMinWorkers());
-            ps.setObject(idx++, cost.getMaxWorkers());
-            ps.setBigDecimal(idx++, cost.getAvgWorkerCount());
-            ps.setObject(idx++, cost.getPeakWorkerCount());
-            ps.setBoolean(idx++, cost.getSpotInstanceUsed());
-            ps.setBoolean(idx++, cost.getPhotonEnabled());
-            ps.setObject(idx++, cost.getAutoscaleEnabled());
-            ps.setObject(idx++, cost.getAutoscaleMinWorkers());
-            ps.setObject(idx++, cost.getAutoscaleMaxWorkers());
-            ps.setTimestamp(idx++, toTimestamp(cost.getRunStartTime()));
-            ps.setTimestamp(idx++, toTimestamp(cost.getRunEndTime()));
-            ps.setInt(idx++, cost.getDurationSeconds());
-            ps.setBigDecimal(idx++, cost.getDurationHours());
-            ps.setString(idx++, cost.getRunStatus());
-            ps.setBoolean(idx++, cost.getIsRetry());
-            ps.setInt(idx++, cost.getAttemptNumber());
-            ps.setString(idx++, cost.getSparkVersion());
-            ps.setString(idx++, cost.getRuntimeEngine());
-            ps.setString(idx++, cost.getClusterSource());
-            ps.setString(idx++, cost.getWorkloadType());
-            ps.setString(idx++, cost.getRegion());
-            ps.setBigDecimal(idx++, cost.getDbuUnitsConsumed());
-            ps.setBigDecimal(idx++, cost.getDbuUnitPrice());
-            ps.setBigDecimal(idx++, cost.getDbuCostUsd());
-            ps.setString(idx++, cost.getDbuSku());
-            ps.setBigDecimal(idx++, cost.getVmDriverCostUsd());
-            ps.setBigDecimal(idx++, cost.getVmWorkerCostUsd());
-            ps.setBigDecimal(idx++, cost.getVmTotalCostUsd());
-            ps.setBigDecimal(idx++, cost.getVmNodeHours());
-            ps.setBigDecimal(idx++, cost.getStorageInputGb());
-            ps.setBigDecimal(idx++, cost.getStorageOutputGb());
-            ps.setBigDecimal(idx++, cost.getStorageCostUsd());
-            ps.setBigDecimal(idx++, cost.getNetworkEgressGb());
-            ps.setBigDecimal(idx++, cost.getNetworkCostUsd());
-            ps.setBigDecimal(idx++, cost.getTotalCostUsd());
-            ps.setString(idx++, cost.getAllocationMethod());
-            ps.setBigDecimal(idx++, cost.getConfidenceScore());
-            ps.setObject(idx++, cost.getConcurrentRunsOnCluster());
-            ps.setBigDecimal(idx++, cost.getClusterUtilizationPct());
-            ps.setString(idx++, cost.getCalculationVersion());
-            ps.setTimestamp(idx++, toTimestamp(cost.getCalculationTimestamp()));
-            ps.setString(idx++, cost.getCalculatedBy());
-            ps.setTimestamp(idx++, toTimestamp(cost.getCollectionTimestamp()));
-            ps.setString(idx++, cost.getTaskVersion());
-            ps.setString(idx++, cost.getContextId());
-            ps.setString(idx++, cost.getMegdpRunId());
-            ps.setString(idx++, cost.getTenantAbb());
-            ps.setTimestamp(idx++, Timestamp.valueOf(LocalDateTime.now()));
-            ps.setTimestamp(idx++, Timestamp.valueOf(LocalDateTime.now()));
-            return ps;
-        }, keyHolder);
-
-        return (Long) keyHolder.getKeys().get("cost_id");
-    }
-
-    /**
-     * Upsert (insert or update) a cost record
-     */
-    public void upsert(CalculatorRunCost cost) {
-        String sql = """
-            INSERT INTO calculator_run_costs (
-                calculator_run_id, reporting_date, calculator_id, calculator_name,
-                databricks_run_id, job_id, job_name, cluster_id,
-                driver_node_type, worker_node_type, worker_count,
-                min_workers, max_workers, avg_worker_count, peak_worker_count,
-                spot_instance_used, photon_enabled, autoscale_enabled,
-                autoscale_min_workers, autoscale_max_workers,
-                run_start_time, run_end_time, duration_seconds, duration_hours, run_status,
-                is_retry, attempt_number,
-                spark_version, runtime_engine, cluster_source, workload_type, region,
-                dbu_units_consumed, dbu_unit_price, dbu_cost_usd, dbu_sku,
-                vm_driver_cost_usd, vm_worker_cost_usd, vm_total_cost_usd, vm_node_hours,
-                storage_cost_usd, total_cost_usd,
-                allocation_method, confidence_score,
-                calculation_version, calculation_timestamp, calculated_by,
-                collection_timestamp,
-                task_version, context_id, megdp_run_id, tenant_abb,
-                created_at, updated_at
-            ) VALUES (
-                :calculatorRunId, :reportingDate, :calculatorId, :calculatorName,
-                :databricksRunId, :jobId, :jobName, :clusterId,
+                :runId, :jobId, :jobName,
+                :calculatorId, :calculatorName,
+                :frequency, :reportingDate,
+                :clusterId,
+                :startTime, :endTime, :durationSeconds, :durationHours,
+                :status,
                 :driverNodeType, :workerNodeType, :workerCount,
-                :minWorkers, :maxWorkers, :avgWorkerCount, :peakWorkerCount,
-                :spotInstanceUsed, :photonEnabled, :autoscaleEnabled,
-                :autoscaleMinWorkers, :autoscaleMaxWorkers,
-                :runStartTime, :runEndTime, :durationSeconds, :durationHours, :runStatus,
-                :isRetry, :attemptNumber,
+                :spotInstances, :photonEnabled,
                 :sparkVersion, :runtimeEngine, :clusterSource, :workloadType, :region,
-                :dbuUnitsConsumed, :dbuUnitPrice, :dbuCostUsd, :dbuSku,
-                :vmDriverCostUsd, :vmWorkerCostUsd, :vmTotalCostUsd, :vmNodeHours,
-                :storageCostUsd, :totalCostUsd,
-                :allocationMethod, :confidenceScore,
-                :calculationVersion, :calculationTimestamp, :calculatedBy,
-                :collectionTimestamp,
+                :autoscaleEnabled, :autoscaleMin, :autoscaleMax,
                 :taskVersion, :contextId, :megdpRunId, :tenantAbb,
-                NOW(), NOW()
+                :dbuCostUsd, :vmCostUsd, :storageCostUsd, :totalCostUsd
             )
-            ON CONFLICT (calculator_run_id, reporting_date)
-            DO UPDATE SET
-                calculator_id = EXCLUDED.calculator_id,
-                calculator_name = EXCLUDED.calculator_name,
-                databricks_run_id = EXCLUDED.databricks_run_id,
-                job_id = EXCLUDED.job_id,
-                job_name = EXCLUDED.job_name,
-                cluster_id = EXCLUDED.cluster_id,
-                driver_node_type = EXCLUDED.driver_node_type,
-                worker_node_type = EXCLUDED.worker_node_type,
-                worker_count = EXCLUDED.worker_count,
-                min_workers = EXCLUDED.min_workers,
-                max_workers = EXCLUDED.max_workers,
-                avg_worker_count = EXCLUDED.avg_worker_count,
-                peak_worker_count = EXCLUDED.peak_worker_count,
-                spot_instance_used = EXCLUDED.spot_instance_used,
-                photon_enabled = EXCLUDED.photon_enabled,
-                autoscale_enabled = EXCLUDED.autoscale_enabled,
-                autoscale_min_workers = EXCLUDED.autoscale_min_workers,
-                autoscale_max_workers = EXCLUDED.autoscale_max_workers,
-                run_start_time = EXCLUDED.run_start_time,
-                run_end_time = EXCLUDED.run_end_time,
-                duration_seconds = EXCLUDED.duration_seconds,
-                duration_hours = EXCLUDED.duration_hours,
-                run_status = EXCLUDED.run_status,
-                is_retry = EXCLUDED.is_retry,
-                attempt_number = EXCLUDED.attempt_number,
-                spark_version = EXCLUDED.spark_version,
-                runtime_engine = EXCLUDED.runtime_engine,
-                cluster_source = EXCLUDED.cluster_source,
-                workload_type = EXCLUDED.workload_type,
-                region = EXCLUDED.region,
-                dbu_units_consumed = EXCLUDED.dbu_units_consumed,
-                dbu_unit_price = EXCLUDED.dbu_unit_price,
-                dbu_cost_usd = EXCLUDED.dbu_cost_usd,
-                dbu_sku = EXCLUDED.dbu_sku,
-                vm_driver_cost_usd = EXCLUDED.vm_driver_cost_usd,
-                vm_worker_cost_usd = EXCLUDED.vm_worker_cost_usd,
-                vm_total_cost_usd = EXCLUDED.vm_total_cost_usd,
-                vm_node_hours = EXCLUDED.vm_node_hours,
-                storage_cost_usd = EXCLUDED.storage_cost_usd,
-                total_cost_usd = EXCLUDED.total_cost_usd,
-                allocation_method = EXCLUDED.allocation_method,
-                confidence_score = EXCLUDED.confidence_score,
-                calculation_version = EXCLUDED.calculation_version,
-                calculation_timestamp = EXCLUDED.calculation_timestamp,
-                calculated_by = EXCLUDED.calculated_by,
-                collection_timestamp = EXCLUDED.collection_timestamp,
-                task_version = EXCLUDED.task_version,
-                context_id = EXCLUDED.context_id,
-                megdp_run_id = EXCLUDED.megdp_run_id,
-                tenant_abb = EXCLUDED.tenant_abb,
-                updated_at = NOW()
-        """;
+            ON CONFLICT (run_id, reporting_date) DO UPDATE SET
+                status                  = EXCLUDED.status,
+                end_time                = EXCLUDED.end_time,
+                duration_seconds        = EXCLUDED.duration_seconds,
+                duration_hours          = EXCLUDED.duration_hours,
+                cost_calculation_status = 'PENDING',
+                cost_calculated_at      = NULL,
+                cost_calculation_notes  = NULL,
+                updated_at              = NOW()
+            """;
 
-        MapSqlParameterSource params = new MapSqlParameterSource()
-                .addValue("calculatorRunId", cost.getCalculatorRunId())
-                .addValue("reportingDate", cost.getReportingDate())
-                .addValue("calculatorId", cost.getCalculatorId())
-                .addValue("calculatorName", cost.getCalculatorName())
-                .addValue("databricksRunId", cost.getDatabricksRunId())
-                .addValue("jobId", cost.getJobId())
-                .addValue("jobName", cost.getJobName())
-                .addValue("clusterId", cost.getClusterId())
-                .addValue("driverNodeType", cost.getDriverNodeType())
-                .addValue("workerNodeType", cost.getWorkerNodeType())
-                .addValue("workerCount", cost.getWorkerCount())
-                .addValue("minWorkers", cost.getMinWorkers())
-                .addValue("maxWorkers", cost.getMaxWorkers())
-                .addValue("avgWorkerCount", cost.getAvgWorkerCount())
-                .addValue("peakWorkerCount", cost.getPeakWorkerCount())
-                .addValue("spotInstanceUsed", cost.getSpotInstanceUsed())
-                .addValue("photonEnabled", cost.getPhotonEnabled())
-                .addValue("autoscaleEnabled", cost.getAutoscaleEnabled())
-                .addValue("autoscaleMinWorkers", cost.getAutoscaleMinWorkers())
-                .addValue("autoscaleMaxWorkers", cost.getAutoscaleMaxWorkers())
-                .addValue("runStartTime", cost.getRunStartTime())
-                .addValue("runEndTime", cost.getRunEndTime())
-                .addValue("durationSeconds", cost.getDurationSeconds())
-                .addValue("durationHours", cost.getDurationHours())
-                .addValue("runStatus", cost.getRunStatus())
-                .addValue("isRetry", cost.getIsRetry())
-                .addValue("attemptNumber", cost.getAttemptNumber())
-                .addValue("sparkVersion", cost.getSparkVersion())
-                .addValue("runtimeEngine", cost.getRuntimeEngine())
-                .addValue("clusterSource", cost.getClusterSource())
-                .addValue("workloadType", cost.getWorkloadType())
-                .addValue("region", cost.getRegion())
-                .addValue("dbuUnitsConsumed", cost.getDbuUnitsConsumed())
-                .addValue("dbuUnitPrice", cost.getDbuUnitPrice())
-                .addValue("dbuCostUsd", cost.getDbuCostUsd())
-                .addValue("dbuSku", cost.getDbuSku())
-                .addValue("vmDriverCostUsd", cost.getVmDriverCostUsd())
-                .addValue("vmWorkerCostUsd", cost.getVmWorkerCostUsd())
-                .addValue("vmTotalCostUsd", cost.getVmTotalCostUsd())
-                .addValue("vmNodeHours", cost.getVmNodeHours())
-                .addValue("storageCostUsd", cost.getStorageCostUsd())
-                .addValue("totalCostUsd", cost.getTotalCostUsd())
-                .addValue("allocationMethod", cost.getAllocationMethod())
-                .addValue("confidenceScore", cost.getConfidenceScore())
-                .addValue("calculationVersion", cost.getCalculationVersion())
-                .addValue("calculationTimestamp", cost.getCalculationTimestamp())
-                .addValue("calculatedBy", cost.getCalculatedBy())
-                .addValue("collectionTimestamp", cost.getCollectionTimestamp())
-                .addValue("taskVersion", cost.getTaskVersion())
-                .addValue("contextId", cost.getContextId())
-                .addValue("megdpRunId", cost.getMegdpRunId())
-                .addValue("tenantAbb", cost.getTenantAbb());
+        namedJdbc.batchUpdate(
+            sql,
+            runs.stream()
+                .map(run -> new MapSqlParameterSource()
+                    .addValue("runId", run.getRunId())
+                    .addValue("jobId", run.getJobId())
+                    .addValue("jobName", run.getJobName())
+                    .addValue("calculatorId", run.getCalculatorId())
+                    .addValue("calculatorName", run.getCalculatorName())
+                    .addValue("frequency", run.getFrequency().name())
+                    .addValue("reportingDate", run.getReportingDate())
+                    .addValue("clusterId", run.getClusterId())
+                    .addValue("startTime", run.getStartTime())
+                    .addValue("endTime", run.getEndTime())
+                    .addValue("durationSeconds", run.getDurationSeconds())
+                    .addValue("durationHours", run.getDurationHours())
+                    .addValue("status", run.getStatus())
+                    .addValue("driverNodeType", run.getDriverNodeType())
+                    .addValue("workerNodeType", run.getWorkerNodeType())
+                    .addValue("workerCount", run.getWorkerCount())
+                    .addValue("spotInstances", run.getSpotInstances())
+                    .addValue("photonEnabled", run.getPhotonEnabled())
+                    .addValue("sparkVersion", run.getSparkVersion())
+                    .addValue("runtimeEngine", run.getRuntimeEngine())
+                    .addValue("clusterSource", run.getClusterSource())
+                    .addValue("workloadType", run.getWorkloadType())
+                    .addValue("region", run.getRegion())
+                    .addValue("autoscaleEnabled", run.getAutoscaleEnabled())
+                    .addValue("autoscaleMin", run.getAutoscaleMin())
+                    .addValue("autoscaleMax", run.getAutoscaleMax())
+                    .addValue("taskVersion", run.getTaskVersion())
+                    .addValue("contextId", run.getContextId())
+                    .addValue("megdpRunId", run.getMegdpRunId())
+                    .addValue("tenantAbb", run.getTenantAbb())
+                    .addValue("dbuCostUsd", run.getDbuCostUsd())
+                    .addValue("vmCostUsd", run.getVmCostUsd())
+                    .addValue("storageCostUsd", run.getStorageCostUsd())
+                    .addValue("totalCostUsd", run.getTotalCostUsd())
+                )
+                .toArray(MapSqlParameterSource[]::new)
+        );
 
-        namedParameterJdbcTemplate.update(sql, params);
-    }
-
-    /**
-     * Batch upsert for multiple cost records (more efficient) 
-     */
-    public void batchUpsert(List<CalculatorRunCost> costs) {
-        String sql = """
-            INSERT INTO calculator_run_costs (
-                calculator_run_id, reporting_date, calculator_id, calculator_name,
-                databricks_run_id, job_id, job_name, cluster_id,
-                driver_node_type, worker_node_type, worker_count,
-                min_workers, max_workers, avg_worker_count, peak_worker_count,
-                spot_instance_used, photon_enabled, autoscale_enabled,
-                autoscale_min_workers, autoscale_max_workers,
-                run_start_time, run_end_time, duration_seconds, duration_hours, run_status,
-                is_retry, attempt_number,
-                spark_version, runtime_engine, cluster_source, workload_type, region,
-                dbu_units_consumed, dbu_unit_price, dbu_cost_usd, dbu_sku,
-                vm_driver_cost_usd, vm_worker_cost_usd, vm_total_cost_usd, vm_node_hours,
-                storage_cost_usd, total_cost_usd,
-                allocation_method, confidence_score,
-                calculation_version, calculation_timestamp, calculated_by,
-                collection_timestamp,
-                task_version, context_id, megdp_run_id, tenant_abb,
-                created_at, updated_at
-            ) VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW()
-            )
-            ON CONFLICT (calculator_run_id, reporting_date)
-            DO UPDATE SET
-                calculator_id = EXCLUDED.calculator_id,
-                calculator_name = EXCLUDED.calculator_name,
-                databricks_run_id = EXCLUDED.databricks_run_id,
-                job_id = EXCLUDED.job_id,
-                job_name = EXCLUDED.job_name,
-                cluster_id = EXCLUDED.cluster_id,
-                driver_node_type = EXCLUDED.driver_node_type,
-                worker_node_type = EXCLUDED.worker_node_type,
-                worker_count = EXCLUDED.worker_count,
-                min_workers = EXCLUDED.min_workers,
-                max_workers = EXCLUDED.max_workers,
-                avg_worker_count = EXCLUDED.avg_worker_count,
-                peak_worker_count = EXCLUDED.peak_worker_count,
-                spot_instance_used = EXCLUDED.spot_instance_used,
-                photon_enabled = EXCLUDED.photon_enabled,
-                autoscale_enabled = EXCLUDED.autoscale_enabled,
-                autoscale_min_workers = EXCLUDED.autoscale_min_workers,
-                autoscale_max_workers = EXCLUDED.autoscale_max_workers,
-                run_start_time = EXCLUDED.run_start_time,
-                run_end_time = EXCLUDED.run_end_time,
-                duration_seconds = EXCLUDED.duration_seconds,
-                duration_hours = EXCLUDED.duration_hours,
-                run_status = EXCLUDED.run_status,
-                is_retry = EXCLUDED.is_retry,
-                attempt_number = EXCLUDED.attempt_number,
-                spark_version = EXCLUDED.spark_version,
-                runtime_engine = EXCLUDED.runtime_engine,
-                cluster_source = EXCLUDED.cluster_source,
-                workload_type = EXCLUDED.workload_type,
-                region = EXCLUDED.region,
-                dbu_units_consumed = EXCLUDED.dbu_units_consumed,
-                dbu_unit_price = EXCLUDED.dbu_unit_price,
-                dbu_cost_usd = EXCLUDED.dbu_cost_usd,
-                dbu_sku = EXCLUDED.dbu_sku,
-                vm_driver_cost_usd = EXCLUDED.vm_driver_cost_usd,
-                vm_worker_cost_usd = EXCLUDED.vm_worker_cost_usd,
-                vm_total_cost_usd = EXCLUDED.vm_total_cost_usd,
-                vm_node_hours = EXCLUDED.vm_node_hours,
-                storage_cost_usd = EXCLUDED.storage_cost_usd,
-                total_cost_usd = EXCLUDED.total_cost_usd,
-                allocation_method = EXCLUDED.allocation_method,
-                confidence_score = EXCLUDED.confidence_score,
-                calculation_version = EXCLUDED.calculation_version,
-                calculation_timestamp = EXCLUDED.calculation_timestamp,
-                calculated_by = EXCLUDED.calculated_by,
-                collection_timestamp = EXCLUDED.collection_timestamp,
-                task_version = EXCLUDED.task_version,
-                context_id = EXCLUDED.context_id,
-                megdp_run_id = EXCLUDED.megdp_run_id,
-                tenant_abb = EXCLUDED.tenant_abb,
-                updated_at = NOW()
-        """;
-
-        jdbcTemplate.batchUpdate(sql, costs, costs.size(), (ps, cost) -> {
-            int idx = 1;
-            ps.setString(idx++, cost.getCalculatorRunId());
-            ps.setObject(idx++, cost.getReportingDate());
-            ps.setString(idx++, cost.getCalculatorId());
-            ps.setString(idx++, cost.getCalculatorName());
-            ps.setLong(idx++, cost.getDatabricksRunId());
-            ps.setObject(idx++, cost.getJobId());
-            ps.setString(idx++, cost.getJobName());
-            ps.setString(idx++, cost.getClusterId());
-            ps.setString(idx++, cost.getDriverNodeType());
-            ps.setString(idx++, cost.getWorkerNodeType());
-            ps.setObject(idx++, cost.getWorkerCount());
-            ps.setObject(idx++, cost.getMinWorkers());
-            ps.setObject(idx++, cost.getMaxWorkers());
-            ps.setBigDecimal(idx++, cost.getAvgWorkerCount());
-            ps.setObject(idx++, cost.getPeakWorkerCount());
-            ps.setBoolean(idx++, cost.getSpotInstanceUsed());
-            ps.setBoolean(idx++, cost.getPhotonEnabled());
-            ps.setObject(idx++, cost.getAutoscaleEnabled());
-            ps.setObject(idx++, cost.getAutoscaleMinWorkers());
-            ps.setObject(idx++, cost.getAutoscaleMaxWorkers());
-            ps.setTimestamp(idx++, toTimestamp(cost.getRunStartTime()));
-            ps.setTimestamp(idx++, toTimestamp(cost.getRunEndTime()));
-            ps.setInt(idx++, cost.getDurationSeconds());
-            ps.setBigDecimal(idx++, cost.getDurationHours());
-            ps.setString(idx++, cost.getRunStatus());
-            ps.setBoolean(idx++, cost.getIsRetry());
-            ps.setInt(idx++, cost.getAttemptNumber());
-            ps.setString(idx++, cost.getSparkVersion());
-            ps.setString(idx++, cost.getRuntimeEngine());
-            ps.setString(idx++, cost.getClusterSource());
-            ps.setString(idx++, cost.getWorkloadType());
-            ps.setString(idx++, cost.getRegion());
-            ps.setBigDecimal(idx++, cost.getDbuUnitsConsumed());
-            ps.setBigDecimal(idx++, cost.getDbuUnitPrice());
-            ps.setBigDecimal(idx++, cost.getDbuCostUsd());
-            ps.setString(idx++, cost.getDbuSku());
-            ps.setBigDecimal(idx++, cost.getVmDriverCostUsd());
-            ps.setBigDecimal(idx++, cost.getVmWorkerCostUsd());
-            ps.setBigDecimal(idx++, cost.getVmTotalCostUsd());
-            ps.setBigDecimal(idx++, cost.getVmNodeHours());
-            ps.setBigDecimal(idx++, cost.getStorageCostUsd());
-            ps.setBigDecimal(idx++, cost.getTotalCostUsd());
-            ps.setString(idx++, cost.getAllocationMethod());
-            ps.setBigDecimal(idx++, cost.getConfidenceScore());
-            ps.setString(idx++, cost.getCalculationVersion());
-            ps.setTimestamp(idx++, toTimestamp(cost.getCalculationTimestamp()));
-            ps.setString(idx++, cost.getCalculatedBy());
-            ps.setTimestamp(idx++, toTimestamp(cost.getCollectionTimestamp()));
-            ps.setString(idx++, cost.getTaskVersion());
-            ps.setString(idx++, cost.getContextId());
-            ps.setString(idx++, cost.getMegdpRunId());
-            ps.setString(idx++, cost.getTenantAbb());
-        });
-
-        log.info("Batch upserted {} cost records", costs.size());
+        log.info("Batch upserted {} calculator run cost records", runs.size());
     }
 
     // =========================================================================
-    // QUERY OPERATIONS
+    // ANALYTICS — all queries are frequency-scoped
     // =========================================================================
 
     /**
-     * Get daily cost trends aggregated across all calculators
+     * Cost totals per reporting_date for all calculators within a frequency.
+     *
+     * <p>{@code frequency} is mandatory — DAILY and MONTHLY trends must never
+     * be mixed on the same chart axis.
      */
-    public List<DailyCostTrend> getDailyCostTrendsAllCalculators(LocalDate startDate, LocalDate endDate) {
+    public List<DailyCostTrend> getCostTrendAllCalculators(
+            RunFrequency frequency, LocalDate startDate, LocalDate endDate) {
+
+        // language=sql
         String sql = """
-            SELECT 
-                reporting_date,
-                SUM(total_cost_usd) as total_cost,
-                SUM(dbu_cost_usd) as dbu_cost,
-                SUM(vm_total_cost_usd) as vm_cost,
-                SUM(storage_cost_usd) as storage_cost,
-                SUM(COALESCE(network_cost_usd, 0)) as network_cost
+            SELECT
+                reporting_date                AS date,
+                SUM(total_cost_usd)           AS total_cost,
+                SUM(dbu_cost_usd)             AS dbu_cost,
+                SUM(vm_cost_usd)              AS vm_cost,
+                SUM(storage_cost_usd)         AS storage_cost
             FROM calculator_run_costs
-            WHERE reporting_date BETWEEN ? AND ?
+            WHERE frequency       = ?
+              AND reporting_date BETWEEN ? AND ?
             GROUP BY reporting_date
             ORDER BY reporting_date
-        """;
+            """;
 
-        return jdbcTemplate.query(sql, dailyCostTrendRowMapper(), startDate, endDate);
+        return jdbc.query(sql, dailyCostTrendRowMapper(), frequency.name(), startDate, endDate);
     }
 
     /**
-     * Get daily cost trends for a specific calculator
+     * Cost totals per reporting_date for a single (calculator, frequency) pair.
      */
-    public List<DailyCostTrend> getDailyCostTrendsByCalculator(
-            LocalDate startDate,
-            LocalDate endDate,
-            String calculatorId
-    ) {
+    public List<DailyCostTrend> getCostTrendByCalculator(
+            RunFrequency frequency, LocalDate startDate, LocalDate endDate, String calculatorId) {
+
+        // language=sql
         String sql = """
-            SELECT 
-                reporting_date,
-                SUM(total_cost_usd) as total_cost,
-                SUM(dbu_cost_usd) as dbu_cost,
-                SUM(vm_total_cost_usd) as vm_cost,
-                SUM(storage_cost_usd) as storage_cost,
-                SUM(COALESCE(network_cost_usd, 0)) as network_cost
+            SELECT
+                reporting_date                AS date,
+                SUM(total_cost_usd)           AS total_cost,
+                SUM(dbu_cost_usd)             AS dbu_cost,
+                SUM(vm_cost_usd)              AS vm_cost,
+                SUM(storage_cost_usd)         AS storage_cost
             FROM calculator_run_costs
-            WHERE reporting_date BETWEEN ? AND ?
-              AND calculator_id = ?
+            WHERE frequency       = ?
+              AND calculator_id   = ?
+              AND reporting_date BETWEEN ? AND ?
             GROUP BY reporting_date
             ORDER BY reporting_date
-        """;
+            """;
 
-        return jdbcTemplate.query(sql, dailyCostTrendRowMapper(), startDate, endDate, calculatorId);
+        return jdbc.query(sql, dailyCostTrendRowMapper(),
+                frequency.name(), calculatorId, startDate, endDate);
     }
 
     /**
-     * Get calculator-level cost summary
+     * Month-over-month cost trend for one (calculator, frequency) pair.
+     *
+     * <p>Groups by the calendar month of {@code reporting_date}, not
+     * {@code start_time}. This keeps late-running jobs in the correct
+     * reporting period. Returns one row per calendar month, oldest first.
      */
-    public List<CalculatorCostSummary> getCalculatorCostSummary(LocalDate startDate, LocalDate endDate) {
+    public List<MonthlyCostTrend> getMonthlyCostTrend(
+            String calculatorId, RunFrequency frequency, int months) {
+
+        // Fetch an extra 12 months beyond the requested window so that
+        // LAG(total_cost, 12) can produce non-null YoY values for the
+        // first month in the caller's window.  The outer WHERE then trims
+        // the result back to the requested period.
+        // language=sql
         String sql = """
-            SELECT 
-                calculator_id,
-                calculator_name,
-                COUNT(*) as total_runs,
-                SUM(total_cost_usd) as total_cost,
-                AVG(total_cost_usd) as avg_cost_per_run,
-                SUM(dbu_cost_usd) as dbu_cost,
-                SUM(vm_total_cost_usd) as vm_cost,
-                SUM(storage_cost_usd) as storage_cost,
-                AVG(confidence_score) as avg_confidence_score,
-                COUNT(*) FILTER (WHERE run_status = 'SUCCESS') as successful_runs,
-                COUNT(*) FILTER (WHERE run_status = 'FAILED') as failed_runs,
-                COUNT(*) FILTER (WHERE is_retry = true) as retry_runs,
-                COUNT(*) FILTER (WHERE spot_instance_used = true) as spot_instance_runs,
-                COUNT(*) FILTER (WHERE photon_enabled = true) as photon_enabled_runs
-            FROM calculator_run_costs
-            WHERE reporting_date BETWEEN ? AND ?
-            GROUP BY calculator_id, calculator_name
-            ORDER BY SUM(total_cost_usd) DESC
-        """;
+            WITH monthly_agg AS (
+                SELECT
+                    DATE_TRUNC('month', reporting_date)              AS period,
+                    TO_CHAR(DATE_TRUNC('month', reporting_date), 'YYYY-MM') AS month,
+                    calculator_id,
+                    calculator_name,
+                    frequency,
+                    COUNT(*)            AS total_runs,
+                    SUM(total_cost_usd) AS total_cost,
+                    AVG(total_cost_usd) AS avg_cost_per_run,
+                    MIN(total_cost_usd) AS min_cost,
+                    MAX(total_cost_usd) AS max_cost
+                FROM calculator_run_costs
+                WHERE calculator_id   = ?
+                  AND frequency       = ?
+                  AND reporting_date >= (CURRENT_DATE - ((? + 12) * INTERVAL '1 month'))
+                GROUP BY 1, 2, 3, 4, 5
+            ),
+            with_deltas AS (
+                SELECT *,
+                    total_cost - LAG(total_cost)      OVER w  AS mom_delta,
+                    ROUND(
+                        100.0 * (total_cost - LAG(total_cost)      OVER w)
+                        / NULLIF(LAG(total_cost)      OVER w, 0), 2) AS mom_pct,
+                    total_cost - LAG(total_cost, 12)  OVER w  AS yoy_delta,
+                    ROUND(
+                        100.0 * (total_cost - LAG(total_cost, 12)  OVER w)
+                        / NULLIF(LAG(total_cost, 12)  OVER w, 0), 2) AS yoy_pct
+                FROM monthly_agg
+                WINDOW w AS (PARTITION BY calculator_id, frequency ORDER BY period)
+            )
+            SELECT *
+            FROM with_deltas
+            WHERE period >= (CURRENT_DATE - (? * INTERVAL '1 month'))
+            ORDER BY period
+            """;
 
-        return jdbcTemplate.query(sql, calculatorCostSummaryRowMapper(), startDate, endDate);
+        return jdbc.query(sql, monthlyCostTrendRowMapper(),
+                calculatorId, frequency.name(), months, months);
     }
 
     /**
-     * Get recent runs with cost details
+     * Per-(calculator, frequency) cost summary for the given reporting date range.
+     *
+     * <p>A calculator running at both cadences produces two rows — one for
+     * DAILY, one for MONTHLY. The result is sorted by total cost descending
+     * within each frequency, then by frequency (DAILY first).
+     *
+     * <p>Pass {@code frequency = null} to return all frequencies together
+     * (useful for an admin overview). Pass a specific frequency to get only
+     * that cadence's results.
      */
-    public List<RecentRunCost> getRecentRunsWithCost(int limit, String calculatorId, String status) {
+    public List<CalculatorCostSummary> getCalculatorCostSummary(
+            RunFrequency frequency, LocalDate startDate, LocalDate endDate) {
+
+        // language=sql
         StringBuilder sql = new StringBuilder("""
-            SELECT 
-                calculator_run_id,
+            SELECT
                 calculator_id,
                 calculator_name,
-                run_start_time,
-                run_end_time,
-                duration_seconds,
-                run_status,
-                dbu_cost_usd,
-                vm_total_cost_usd,
-                storage_cost_usd,
-                total_cost_usd,
-                COALESCE(worker_count, avg_worker_count) as worker_count,
-                spot_instance_used,
-                photon_enabled,
-                is_retry,
-                attempt_number
+                frequency,
+                COUNT(*)                                                    AS total_runs,
+                SUM(total_cost_usd)                                         AS total_cost,
+                AVG(total_cost_usd)                                         AS avg_cost_per_run,
+                SUM(dbu_cost_usd)                                           AS dbu_cost,
+                SUM(vm_cost_usd)                                            AS vm_cost,
+                SUM(storage_cost_usd)                                       AS storage_cost,
+                COUNT(*) FILTER (WHERE status = 'SUCCESS')                  AS successful_runs,
+                COUNT(*) FILTER (WHERE status = 'FAILED')                   AS failed_runs,
+                COUNT(*) FILTER (WHERE spot_instances = TRUE)               AS spot_instance_runs,
+                COUNT(*) FILTER (WHERE photon_enabled  = TRUE)              AS photon_enabled_runs
+            FROM calculator_run_costs
+            WHERE reporting_date BETWEEN ? AND ?
+            """);
+
+        if (frequency != null) {
+            sql.append(" AND frequency = '").append(frequency.name()).append("'");
+        }
+
+        sql.append("""
+            GROUP BY calculator_id, calculator_name, frequency
+            ORDER BY frequency, SUM(total_cost_usd) DESC
+            """);
+
+        return jdbc.query(sql.toString(), calculatorCostSummaryRowMapper(), startDate, endDate);
+    }
+
+    /**
+     * Recent runs with full cost detail.
+     * Both {@code calculatorId} and {@code frequency} are optional filters.
+     */
+    public List<RecentRunCost> getRecentRunsWithCost(
+            int limit, String calculatorId, RunFrequency frequency, String status) {
+
+        // language=sql
+        StringBuilder sql = new StringBuilder("""
+            SELECT
+                run_id, calculator_id, calculator_name,
+                frequency, reporting_date,
+                start_time, end_time, duration_seconds,
+                status,
+                dbu_cost_usd, vm_cost_usd, storage_cost_usd, total_cost_usd,
+                worker_count, spot_instances, photon_enabled, tenant_abb
             FROM calculator_run_costs
             WHERE 1=1
-        """);
+            """);
 
         Map<String, Object> params = new HashMap<>();
 
@@ -546,325 +314,322 @@ public class CalculatorRunCostRepository {
             sql.append(" AND calculator_id = :calculatorId");
             params.put("calculatorId", calculatorId);
         }
-
+        if (frequency != null) {
+            sql.append(" AND frequency = :frequency");
+            params.put("frequency", frequency.name());
+        }
         if (status != null) {
-            sql.append(" AND run_status = :status");
+            sql.append(" AND status = :status");
             params.put("status", status);
         }
 
-        sql.append(" ORDER BY run_start_time DESC LIMIT :limit");
+        sql.append(" ORDER BY reporting_date DESC, start_time DESC LIMIT :limit");
         params.put("limit", limit);
 
-        return namedParameterJdbcTemplate.query(sql.toString(), params, recentRunCostRowMapper());
+        return namedJdbc.query(sql.toString(), params, recentRunCostRowMapper());
     }
 
     /**
-     * Get cost breakdown by component
+     * Cost component breakdown scoped to a frequency and reporting date range.
      */
-    public CostBreakdown getCostBreakdown(LocalDate startDate, LocalDate endDate) {
+    public CostBreakdown getCostBreakdown(
+            RunFrequency frequency, LocalDate startDate, LocalDate endDate) {
+
+        // language=sql
         String sql = """
-            SELECT 
-                SUM(dbu_cost_usd) as dbu_cost,
-                SUM(vm_total_cost_usd) as vm_cost,
-                SUM(storage_cost_usd) as storage_cost,
-                SUM(COALESCE(network_cost_usd, 0)) as network_cost,
-                SUM(total_cost_usd) as total_cost
+            SELECT
+                SUM(dbu_cost_usd)       AS dbu_cost,
+                SUM(vm_cost_usd)        AS vm_cost,
+                SUM(storage_cost_usd)   AS storage_cost,
+                SUM(total_cost_usd)     AS total_cost
             FROM calculator_run_costs
-            WHERE reporting_date BETWEEN ? AND ?
-        """;
+            WHERE frequency      = ?
+              AND reporting_date BETWEEN ? AND ?
+            """;
 
-        return jdbcTemplate.queryForObject(sql, costBreakdownRowMapper(), startDate, endDate);
+        return jdbc.queryForObject(sql, costBreakdownRowMapper(), frequency.name(), startDate, endDate);
     }
 
     /**
-     * Get efficiency metrics
+     * Efficiency metrics scoped to a frequency and reporting date range.
      */
-    public EfficiencyMetrics getEfficiencyMetrics(LocalDate startDate, LocalDate endDate) {
+    public EfficiencyMetrics getEfficiencyMetrics(
+            RunFrequency frequency, LocalDate startDate, LocalDate endDate) {
+
+        // language=sql
         String sql = """
-            SELECT 
-                AVG(CASE WHEN spot_instance_used = true THEN 100.0 ELSE 0.0 END) as spot_instance_usage,
-                AVG(CASE WHEN photon_enabled = true THEN 100.0 ELSE 0.0 END) as photon_adoption,
-                AVG(COALESCE(cluster_utilization_pct, 0)) as avg_cluster_utilization,
-                AVG(CASE WHEN is_retry = true THEN 100.0 ELSE 0.0 END) as retry_rate,
-                AVG(CASE WHEN run_status = 'FAILED' THEN 100.0 ELSE 0.0 END) as failure_rate
+            SELECT
+                AVG(CASE WHEN spot_instances = TRUE  THEN 100.0 ELSE 0.0 END) AS spot_instance_usage_pct,
+                AVG(CASE WHEN photon_enabled  = TRUE  THEN 100.0 ELSE 0.0 END) AS photon_adoption_pct,
+                AVG(CASE WHEN status = 'FAILED'       THEN 100.0 ELSE 0.0 END) AS failure_rate_pct
             FROM calculator_run_costs
-            WHERE reporting_date BETWEEN ? AND ?
-        """;
+            WHERE frequency      = ?
+              AND reporting_date BETWEEN ? AND ?
+            """;
 
-        return jdbcTemplate.queryForObject(sql, efficiencyMetricsRowMapper(), startDate, endDate);
+        return jdbc.queryForObject(sql, efficiencyMetricsRowMapper(), frequency.name(), startDate, endDate);
     }
 
     /**
-     * Get cost anomalies (runs that cost more than threshold × average)
+     * Anomaly detection: runs whose cost exceeds {@code threshold} ×
+     * the per-(calculator, frequency) average.
+     *
+     * <p>The CTE average is computed within the same frequency only —
+     * a MONTHLY run is never benchmarked against DAILY run averages.
      */
-    public List<CostAnomaly> getCostAnomalies(double threshold, LocalDate startDate, LocalDate endDate) {
+    public List<CostAnomaly> getCostAnomalies(
+            RunFrequency frequency, double threshold,
+            LocalDate startDate, LocalDate endDate) {
+
+        // language=sql
         String sql = """
             WITH calc_avg AS (
-                SELECT 
+                SELECT
                     calculator_id,
-                    AVG(total_cost_usd) as avg_cost,
-                    STDDEV(total_cost_usd) as std_dev
+                    frequency,
+                    AVG(total_cost_usd) AS avg_cost
                 FROM calculator_run_costs
-                WHERE reporting_date BETWEEN ? AND ?
-                  AND run_status = 'SUCCESS'
-                GROUP BY calculator_id
+                WHERE frequency      = ?
+                  AND reporting_date BETWEEN ? AND ?
+                  AND status = 'SUCCESS'
+                GROUP BY calculator_id, frequency
+                HAVING COUNT(*) > 1
             )
-            SELECT 
-                c.calculator_run_id,
+            SELECT
+                c.run_id,
                 c.calculator_id,
                 c.calculator_name,
-                c.run_start_time,
-                c.total_cost_usd as actual_cost,
-                ca.avg_cost as average_cost,
-                (c.total_cost_usd / ca.avg_cost) as cost_multiplier,
-                c.run_status,
+                c.frequency,
+                c.reporting_date,
+                c.start_time,
+                c.total_cost_usd               AS actual_cost,
+                ca.avg_cost                    AS average_cost,
+                c.total_cost_usd / ca.avg_cost AS cost_multiplier,
+                c.status,
                 c.duration_seconds
             FROM calculator_run_costs c
-            INNER JOIN calc_avg ca ON c.calculator_id = ca.calculator_id
-            WHERE c.reporting_date BETWEEN ? AND ?
+            JOIN calc_avg ca
+              ON  c.calculator_id = ca.calculator_id
+              AND c.frequency     = ca.frequency
+            WHERE c.frequency      = ?
+              AND c.reporting_date BETWEEN ? AND ?
               AND c.total_cost_usd > (ca.avg_cost * ?)
-            ORDER BY (c.total_cost_usd / ca.avg_cost) DESC
-        """;
+            ORDER BY c.total_cost_usd / ca.avg_cost DESC
+            """;
 
-        return jdbcTemplate.query(sql, costAnomalyRowMapper(),
-                startDate, endDate, startDate, endDate, threshold);
+        return jdbc.query(sql, costAnomalyRowMapper(),
+                frequency.name(), startDate, endDate,   // CTE params
+                frequency.name(), startDate, endDate,   // outer params
+                threshold);
     }
 
-    /**
-     * Get all runs for CSV export
-     */
-    public List<RecentRunCost> getAllRunsForExport(LocalDate startDate, LocalDate endDate, String calculatorId) {
-        StringBuilder sql = new StringBuilder("""
-            SELECT 
-                calculator_run_id,
-                calculator_id,
-                calculator_name,
-                run_start_time,
-                run_end_time,
-                duration_seconds,
-                run_status,
-                dbu_cost_usd,
-                vm_total_cost_usd,
-                storage_cost_usd,
-                total_cost_usd,
-                COALESCE(worker_count, avg_worker_count) as worker_count,
-                spot_instance_used,
-                photon_enabled,
-                is_retry,
-                attempt_number
+    // =========================================================================
+    // UTILITY
+    // =========================================================================
+
+    public Optional<CalculatorRunCost> findByRunId(Long runId) {
+        String sql = "SELECT * FROM calculator_run_costs WHERE run_id = ?";
+        List<CalculatorRunCost> rows = jdbc.query(sql, fullRowMapper(), runId);
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
+    }
+
+    public BigDecimal getTotalCost(
+            RunFrequency frequency, LocalDate startDate, LocalDate endDate) {
+
+        String sql = """
+            SELECT COALESCE(SUM(total_cost_usd), 0)
             FROM calculator_run_costs
-            WHERE reporting_date BETWEEN :startDate AND :endDate
-        """);
+            WHERE frequency      = ?
+              AND reporting_date BETWEEN ? AND ?
+            """;
+        return jdbc.queryForObject(sql, BigDecimal.class, frequency.name(), startDate, endDate);
+    }
+
+    public List<CalculatorRunCost> getAllRunsForExport(
+            RunFrequency frequency, LocalDate startDate, LocalDate endDate, String calculatorId) {
+
+        StringBuilder sql = new StringBuilder("""
+            SELECT * FROM calculator_run_costs
+            WHERE frequency      = :frequency
+              AND reporting_date BETWEEN :startDate AND :endDate
+            """);
 
         MapSqlParameterSource params = new MapSqlParameterSource()
-                .addValue("startDate", startDate)
-                .addValue("endDate", endDate);
+                .addValue("frequency",  frequency.name())
+                .addValue("startDate",  startDate)
+                .addValue("endDate",    endDate);
 
         if (calculatorId != null) {
             sql.append(" AND calculator_id = :calculatorId");
             params.addValue("calculatorId", calculatorId);
         }
 
-        sql.append(" ORDER BY run_start_time DESC");
+        sql.append(" ORDER BY reporting_date DESC, start_time DESC");
+        return namedJdbc.query(sql.toString(), params, fullRowMapper());
+    }
 
-        return namedParameterJdbcTemplate.query(sql.toString(), params, recentRunCostRowMapper());
+    public int deleteOlderThan(RunFrequency frequency, LocalDate cutoffDate) {
+        return jdbc.update(
+                "DELETE FROM calculator_run_costs WHERE frequency = ? AND reporting_date < ?",
+                frequency.name(), cutoffDate);
     }
 
     // =========================================================================
     // ROW MAPPERS
     // =========================================================================
 
-    private static Timestamp toTimestamp(LocalDateTime dateTime) {
-        return dateTime == null ? null : Timestamp.valueOf(dateTime);
-    }
-
     private RowMapper<DailyCostTrend> dailyCostTrendRowMapper() {
-        return (rs, rowNum) -> new DailyCostTrend(
-                rs.getObject("reporting_date", LocalDate.class),
+        return (rs, n) -> new DailyCostTrend(
+                rs.getObject("date", LocalDate.class),
                 rs.getBigDecimal("total_cost"),
                 rs.getBigDecimal("dbu_cost"),
                 rs.getBigDecimal("vm_cost"),
-                rs.getBigDecimal("storage_cost"),
-                rs.getBigDecimal("network_cost")
+                rs.getBigDecimal("storage_cost")
+        );
+    }
+
+    private RowMapper<MonthlyCostTrend> monthlyCostTrendRowMapper() {
+        return (rs, n) -> new MonthlyCostTrend(
+                rs.getString("month"),
+                rs.getString("calculator_id"),
+                rs.getString("calculator_name"),
+                RunFrequency.of(rs.getString("frequency")),
+                rs.getLong("total_runs"),
+                rs.getBigDecimal("total_cost"),
+                rs.getBigDecimal("avg_cost_per_run"),
+                rs.getBigDecimal("min_cost"),
+                rs.getBigDecimal("max_cost"),
+                rs.getBigDecimal("mom_delta"),
+                rs.getBigDecimal("mom_pct"),
+                rs.getBigDecimal("yoy_delta"),
+                rs.getBigDecimal("yoy_pct")
         );
     }
 
     private RowMapper<CalculatorCostSummary> calculatorCostSummaryRowMapper() {
-        return (rs, rowNum) -> new CalculatorCostSummary(
+        return (rs, n) -> new CalculatorCostSummary(
                 rs.getString("calculator_id"),
                 rs.getString("calculator_name"),
+                RunFrequency.of(rs.getString("frequency")),
                 rs.getLong("total_runs"),
                 rs.getBigDecimal("total_cost"),
                 rs.getBigDecimal("avg_cost_per_run"),
                 rs.getBigDecimal("dbu_cost"),
                 rs.getBigDecimal("vm_cost"),
                 rs.getBigDecimal("storage_cost"),
-                rs.getBigDecimal("avg_confidence_score"),
                 rs.getLong("successful_runs"),
                 rs.getLong("failed_runs"),
-                rs.getLong("retry_runs"),
                 rs.getLong("spot_instance_runs"),
                 rs.getLong("photon_enabled_runs")
         );
     }
 
     private RowMapper<RecentRunCost> recentRunCostRowMapper() {
-        return (rs, rowNum) -> new RecentRunCost(
-                rs.getString("calculator_run_id"),
+        return (rs, n) -> new RecentRunCost(
+                rs.getLong("run_id"),
                 rs.getString("calculator_id"),
                 rs.getString("calculator_name"),
-                rs.getTimestamp("run_start_time").toLocalDateTime(),
-                rs.getTimestamp("run_end_time").toLocalDateTime(),
+                RunFrequency.of(rs.getString("frequency")),
+                rs.getObject("reporting_date", LocalDate.class),
+                rs.getTimestamp("start_time").toLocalDateTime(),
+                rs.getTimestamp("end_time").toLocalDateTime(),
                 rs.getInt("duration_seconds"),
-                rs.getString("run_status"),
+                rs.getString("status"),
                 rs.getBigDecimal("dbu_cost_usd"),
-                rs.getBigDecimal("vm_total_cost_usd"),
+                rs.getBigDecimal("vm_cost_usd"),
                 rs.getBigDecimal("storage_cost_usd"),
                 rs.getBigDecimal("total_cost_usd"),
-                rs.getBigDecimal("worker_count"),
-                rs.getBoolean("spot_instance_used"),
+                (Integer) rs.getObject("worker_count"),
+                rs.getBoolean("spot_instances"),
                 rs.getBoolean("photon_enabled"),
-                rs.getBoolean("is_retry"),
-                rs.getInt("attempt_number")
+                rs.getString("tenant_abb")
         );
     }
 
     private RowMapper<CostBreakdown> costBreakdownRowMapper() {
-        return (rs, rowNum) -> new CostBreakdown(
+        return (rs, n) -> new CostBreakdown(
                 rs.getBigDecimal("dbu_cost"),
                 rs.getBigDecimal("vm_cost"),
                 rs.getBigDecimal("storage_cost"),
-                rs.getBigDecimal("network_cost"),
                 rs.getBigDecimal("total_cost")
         );
     }
 
     private RowMapper<EfficiencyMetrics> efficiencyMetricsRowMapper() {
-        return (rs, rowNum) -> new EfficiencyMetrics(
-                rs.getDouble("spot_instance_usage"),
-                rs.getDouble("photon_adoption"),
-                rs.getDouble("avg_cluster_utilization"),
-                rs.getDouble("retry_rate"),
-                rs.getDouble("failure_rate")
+        return (rs, n) -> new EfficiencyMetrics(
+                rs.getDouble("spot_instance_usage_pct"),
+                rs.getDouble("photon_adoption_pct"),
+                rs.getDouble("failure_rate_pct")
         );
     }
 
     private RowMapper<CostAnomaly> costAnomalyRowMapper() {
-        return (rs, rowNum) -> new CostAnomaly(
-                rs.getString("calculator_run_id"),
+        return (rs, n) -> new CostAnomaly(
+                rs.getLong("run_id"),
                 rs.getString("calculator_id"),
                 rs.getString("calculator_name"),
-                rs.getTimestamp("run_start_time").toLocalDateTime(),
+                RunFrequency.of(rs.getString("frequency")),
+                rs.getObject("reporting_date", LocalDate.class),
+                rs.getTimestamp("start_time").toLocalDateTime(),
                 rs.getBigDecimal("actual_cost"),
                 rs.getBigDecimal("average_cost"),
                 rs.getBigDecimal("cost_multiplier"),
-                rs.getString("run_status"),
+                rs.getString("status"),
                 rs.getInt("duration_seconds")
         );
     }
 
-    private RowMapper<CalculatorRunCost> calculatorRunCostRowMapper() {
-        return (rs, rowNum) -> {
-            CalculatorRunCost cost = new CalculatorRunCost();
-            cost.setCostId(rs.getLong("cost_id"));
-            cost.setCalculatorRunId(rs.getString("calculator_run_id"));
-            cost.setReportingDate(rs.getObject("reporting_date", LocalDate.class));
-            cost.setCalculatorId(rs.getString("calculator_id"));
-            cost.setCalculatorName(rs.getString("calculator_name"));
-            cost.setDatabricksRunId(rs.getLong("databricks_run_id"));
-            cost.setJobId(rs.getObject("job_id", Long.class));
-            cost.setJobName(rs.getString("job_name"));
-            cost.setClusterId(rs.getString("cluster_id"));
-            cost.setDriverNodeType(rs.getString("driver_node_type"));
-            cost.setWorkerNodeType(rs.getString("worker_node_type"));
-            cost.setWorkerCount(rs.getObject("worker_count", Integer.class));
-            cost.setAvgWorkerCount(rs.getBigDecimal("avg_worker_count"));
-            cost.setSpotInstanceUsed(rs.getBoolean("spot_instance_used"));
-            cost.setPhotonEnabled(rs.getBoolean("photon_enabled"));
-            cost.setAutoscaleEnabled(rs.getObject("autoscale_enabled", Boolean.class));
-            cost.setAutoscaleMinWorkers(rs.getObject("autoscale_min_workers", Integer.class));
-            cost.setAutoscaleMaxWorkers(rs.getObject("autoscale_max_workers", Integer.class));
-            cost.setRunStartTime(rs.getTimestamp("run_start_time").toLocalDateTime());
-            cost.setRunEndTime(rs.getTimestamp("run_end_time").toLocalDateTime());
-            cost.setDurationSeconds(rs.getInt("duration_seconds"));
-            cost.setDurationHours(rs.getBigDecimal("duration_hours"));
-            cost.setRunStatus(rs.getString("run_status"));
-            cost.setDbuCostUsd(rs.getBigDecimal("dbu_cost_usd"));
-            cost.setVmTotalCostUsd(rs.getBigDecimal("vm_total_cost_usd"));
-            cost.setStorageCostUsd(rs.getBigDecimal("storage_cost_usd"));
-            cost.setTotalCostUsd(rs.getBigDecimal("total_cost_usd"));
-            cost.setAllocationMethod(rs.getString("allocation_method"));
-            cost.setConfidenceScore(rs.getBigDecimal("confidence_score"));
-            cost.setSparkVersion(rs.getString("spark_version"));
-            cost.setRuntimeEngine(rs.getString("runtime_engine"));
-            cost.setClusterSource(rs.getString("cluster_source"));
-            cost.setWorkloadType(rs.getString("workload_type"));
-            cost.setRegion(rs.getString("region"));
-            Timestamp collectionTs = rs.getTimestamp("collection_timestamp");
-            if (collectionTs != null) {
-                cost.setCollectionTimestamp(collectionTs.toLocalDateTime());
-            }
-            cost.setTaskVersion(rs.getString("task_version"));
-            cost.setContextId(rs.getString("context_id"));
-            cost.setMegdpRunId(rs.getString("megdp_run_id"));
-            cost.setTenantAbb(rs.getString("tenant_abb"));
-            return cost;
-        };
+    private RowMapper<CalculatorRunCost> fullRowMapper() {
+        return (rs, n) -> CalculatorRunCost.builder()
+                .id(rs.getLong("cost_id"))
+                .runId(rs.getLong("run_id"))
+                .jobId(rs.getLong("job_id"))
+                .jobName(rs.getString("job_name"))
+                .calculatorId(rs.getString("calculator_id"))
+                .calculatorName(rs.getString("calculator_name"))
+                .frequency(RunFrequency.of(rs.getString("frequency")))
+                .reportingDate(rs.getObject("reporting_date", LocalDate.class))
+                .clusterId(rs.getString("cluster_id"))
+                .startTime(rs.getTimestamp("start_time").toLocalDateTime())
+                .endTime(rs.getTimestamp("end_time").toLocalDateTime())
+                .durationSeconds(rs.getInt("duration_seconds"))
+                .durationHours(rs.getBigDecimal("duration_hours"))
+                .status(rs.getString("status"))
+                .driverNodeType(rs.getString("driver_node_type"))
+                .workerNodeType(rs.getString("worker_node_type"))
+                .workerCount((Integer) rs.getObject("worker_count"))
+                .spotInstances(rs.getBoolean("spot_instances"))
+                .photonEnabled(rs.getBoolean("photon_enabled"))
+                .sparkVersion(rs.getString("spark_version"))
+                .runtimeEngine(rs.getString("runtime_engine"))
+                .clusterSource(rs.getString("cluster_source"))
+                .workloadType(rs.getString("workload_type"))
+                .region(rs.getString("region"))
+                .autoscaleEnabled(rs.getBoolean("autoscale_enabled"))
+                .autoscaleMin((Integer) rs.getObject("autoscale_min"))
+                .autoscaleMax((Integer) rs.getObject("autoscale_max"))
+                .taskVersion(rs.getString("task_version"))
+                .contextId(rs.getString("context_id"))
+                .megdpRunId(rs.getString("megdp_run_id"))
+                .tenantAbb(rs.getString("tenant_abb"))
+                .dbuCostUsd(rs.getBigDecimal("dbu_cost_usd"))
+                .vmCostUsd(rs.getBigDecimal("vm_cost_usd"))
+                .storageCostUsd(rs.getBigDecimal("storage_cost_usd"))
+                .totalCostUsd(rs.getBigDecimal("total_cost_usd"))
+                .createdAt(rs.getTimestamp("created_at").toLocalDateTime())
+                .updatedAt(rs.getTimestamp("updated_at").toLocalDateTime())
+                .build();
     }
 
     // =========================================================================
-    // UTILITY METHODS
+    // HELPERS
     // =========================================================================
 
-    /**
-     * Find cost record by run ID
-     */
-    public Optional<CalculatorRunCost> findByRunId(String runId, LocalDate reportingDate) {
-        String sql = """
-            SELECT * FROM calculator_run_costs
-            WHERE calculator_run_id = ? AND reporting_date = ?
-        """;
-
-        List<CalculatorRunCost> results = jdbcTemplate.query(
-                sql,
-                calculatorRunCostRowMapper(),
-                runId,
-                reportingDate
-        );
-
-        return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
+    private static Timestamp toTs(LocalDateTime ldt) {
+        return ldt == null ? null : Timestamp.valueOf(ldt);
     }
 
-    /**
-     * Delete cost records older than retention period
-     */
-    public int deleteOlderThan(LocalDate cutoffDate) {
-        String sql = "DELETE FROM calculator_run_costs WHERE reporting_date < ?";
-        return jdbcTemplate.update(sql, cutoffDate);
-    }
-
-    /**
-     * Get total cost for a date range
-     */
-    public BigDecimal getTotalCost(LocalDate startDate, LocalDate endDate) {
-        String sql = """
-            SELECT COALESCE(SUM(total_cost_usd), 0) 
-            FROM calculator_run_costs
-            WHERE reporting_date BETWEEN ? AND ?
-        """;
-
-        return jdbcTemplate.queryForObject(sql, BigDecimal.class, startDate, endDate);
-    }
-
-    /**
-     * Count runs for a specific calculator
-     */
-    public long countRunsByCalculator(String calculatorId, LocalDate startDate, LocalDate endDate) {
-        String sql = """
-            SELECT COUNT(*) FROM calculator_run_costs
-            WHERE calculator_id = ? AND reporting_date BETWEEN ? AND ?
-        """;
-
-        return jdbcTemplate.queryForObject(sql, Long.class, calculatorId, startDate, endDate);
+    private static boolean bool(Boolean b) {
+        return Boolean.TRUE.equals(b);
     }
 }
