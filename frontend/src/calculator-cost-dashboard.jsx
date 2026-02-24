@@ -1,21 +1,14 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
+  BarChart, Bar, PieChart, Pie, Cell,
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import {
   TrendingUp, TrendingDown, DollarSign, Activity, AlertCircle,
-  Check, Zap, Database, Cloud, HardDrive, Download,
-  Sun, Moon, ChevronUp, ChevronDown
+  Check, Zap, Download, Sun, Moon, ChevronUp, ChevronDown
 } from 'lucide-react';
 
 // Brand Color System
-const brand = {
-  black: '#000000',
-  white: '#FFFFFF',
-  red: '#E60000',
-  redWeb: '#DA0000',
-};
 
 const reds = {
   100: '#FDEAEA',
@@ -76,7 +69,6 @@ const neutral = {
 
 const CalculatorCostDashboard = () => {
   const [data, setData] = useState(null);
-  const [selectedFrequency, setSelectedFrequency] = useState('DAILY');
   const [selectedPeriod, setSelectedPeriod] = useState('30d');
   const [selectedCalculator, setSelectedCalculator] = useState('all');
   const [loading, setLoading] = useState(false);
@@ -84,7 +76,7 @@ const CalculatorCostDashboard = () => {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
   const [sortConfig, setSortConfig] = useState({ key: 'startTime', direction: 'desc' });
   const [monthlyCostTrend, setMonthlyCostTrend] = useState(null);
-  const [monthlyLoading, setMonthlyLoading] = useState(false);
+  const [trendLoading, setTrendLoading] = useState(false);
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
@@ -134,7 +126,7 @@ const CalculatorCostDashboard = () => {
     setError(null);
     try {
       const url = new URL('/api/v1/cost-analytics', API_BASE_URL);
-      url.searchParams.append('frequency', selectedFrequency);
+      url.searchParams.append('frequency', 'DAILY');
       url.searchParams.append('period', selectedPeriod);
       url.searchParams.append('calculator', selectedCalculator);
       const response = await fetch(url, { signal });
@@ -166,17 +158,17 @@ const CalculatorCostDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedFrequency, selectedPeriod, selectedCalculator, API_BASE_URL]);
+  }, [selectedPeriod, selectedCalculator, API_BASE_URL]);
 
   const fetchMonthlyTrend = useCallback(async (signal) => {
     if (selectedCalculator === 'all') {
       setMonthlyCostTrend(null);
       return;
     }
-    setMonthlyLoading(true);
+    setTrendLoading(true);
     try {
       const url = new URL('/api/v1/cost-analytics/monthly-trend', API_BASE_URL);
-      url.searchParams.append('frequency', selectedFrequency);
+      url.searchParams.append('frequency', 'DAILY');
       url.searchParams.append('calculatorId', selectedCalculator);
       url.searchParams.append('months', '13');
       const response = await fetch(url, { signal });
@@ -185,9 +177,9 @@ const CalculatorCostDashboard = () => {
     } catch (err) {
       if (err.name !== 'AbortError') setMonthlyCostTrend(null);
     } finally {
-      setMonthlyLoading(false);
+      setTrendLoading(false);
     }
-  }, [selectedFrequency, selectedCalculator, API_BASE_URL]);
+  }, [selectedCalculator, API_BASE_URL]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -403,7 +395,7 @@ const CalculatorCostDashboard = () => {
   };
 
   // Per-calculator detail card: MTD total, MoM%, YoY%, run count, avg/run, cost breakdown
-  const CalculatorDetailCard = ({ summary, calculatorSummary, frequency, theme, colors }) => {
+  const CalculatorDetailCard = ({ summary, calculatorSummary, theme, colors }) => {
     const [yr, mo] = summary.month.split('-');
     const monthLabel = new Date(Number(yr), Number(mo) - 1)
       .toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) + ' (MTD)';
@@ -459,7 +451,7 @@ const CalculatorCostDashboard = () => {
           border: `1px solid ${colors.border}`,
         }}
       >
-        {/* Header — red used for emphasis on the calculator name, not structural decoration */}
+        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <h3
@@ -472,7 +464,7 @@ const CalculatorCostDashboard = () => {
               className="px-2 py-0.5 rounded text-xs font-medium"
               style={{ backgroundColor: theme === 'dark' ? neutral[80] : neutral[10], color: colors.textMuted }}
             >
-              {frequency}
+              Daily
             </span>
           </div>
           <span className="text-sm font-medium" style={{ color: colors.textMuted }}>{monthLabel}</span>
@@ -593,23 +585,6 @@ const CalculatorCostDashboard = () => {
           <div className="flex items-center gap-6">
             {/* Filters */}
             <div className="flex gap-3">
-              <select
-                aria-label="Select Frequency"
-                value={selectedFrequency}
-                onChange={(e) => setSelectedFrequency(e.target.value)}
-                className="rounded-lg px-4 py-2 text-sm focus:ring-2 focus:border-transparent transition-all"
-                style={{
-                  backgroundColor: colors.surface,
-                  border: `1px solid ${colors.border}`,
-                  color: colors.text,
-                  outline: 'none'
-                }}
-                onFocus={(e) => e.target.style.borderColor = reds[600]}
-                onBlur={(e) => e.target.style.borderColor = colors.border}
-              >
-                <option value="DAILY" style={{ backgroundColor: colors.surface, color: colors.text }}>Daily</option>
-                <option value="MONTHLY" style={{ backgroundColor: colors.surface, color: colors.text }}>Monthly</option>
-              </select>
               <select
                 aria-label="Select Period"
                 value={selectedPeriod}
@@ -738,7 +713,7 @@ const CalculatorCostDashboard = () => {
 
         {/* Calculator Detail Card — visible only when a specific calculator is selected */}
         {selectedCalculator !== 'all' && (
-          monthlyLoading ? (
+          trendLoading ? (
             <div
               className="rounded-2xl p-6 shadow-sm mb-10 animate-pulse"
               style={{
@@ -759,7 +734,6 @@ const CalculatorCostDashboard = () => {
             <CalculatorDetailCard
               summary={calculatorMTDSummary}
               calculatorSummary={selectedCalculatorSummary}
-              frequency={selectedFrequency}
               theme={theme}
               colors={colors}
             />
