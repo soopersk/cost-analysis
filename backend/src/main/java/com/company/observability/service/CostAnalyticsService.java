@@ -180,18 +180,22 @@ public class CostAnalyticsService {
      * Returns true if the given calculatorId matches any pattern in the
      * excluded-calculators list. Patterns support a single '*' wildcard:
      * <ul>
+     *   <li>{@code *}        — matches everything (exclude all calculators)</li>
      *   <li>{@code *suffix}  — matches any id ending with "suffix"</li>
      *   <li>{@code prefix*}  — matches any id starting with "prefix"</li>
      *   <li>{@code *middle*} — matches any id containing "middle"</li>
      *   <li>{@code exact}    — exact match (no wildcard)</li>
      * </ul>
-     * All comparisons are case-insensitive.
+     * All comparisons are case-insensitive. The {@code *} must appear only at
+     * the start, end, or both ends of the pattern; mid-position wildcards like
+     * {@code foo*bar} are NOT supported and will be silently treated as no-match.
      */
     private boolean isExcluded(String calculatorId) {
         if (calculatorId == null) return false;
         String id = calculatorId.toLowerCase();
         for (String pattern : properties.getExcludedCalculators()) {
             String p = pattern.toLowerCase();
+            if (p.equals("*")) return true;
             if (!p.contains("*")) {
                 if (id.equals(p)) return true;
             } else if (p.startsWith("*") && p.endsWith("*")) {

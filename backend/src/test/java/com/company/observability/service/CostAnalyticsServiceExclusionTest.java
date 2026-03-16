@@ -137,6 +137,55 @@ class CostAnalyticsServiceExclusionTest {
                 .containsExactly("prod_calc");
     }
 
+    @Test
+    void star_alone_excludes_all_calculators() {
+        when(repo.getCalculatorCostSummary(any(), any(), any()))
+                .thenReturn(List.of(summary("calc_a"), summary("calc_b")));
+
+        var service = serviceWithPatterns("*");
+        var result = service.getCalculatorCostSummary(RunFrequency.DAILY, LocalDate.now().minusDays(7), LocalDate.now());
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void null_calculator_id_in_result_is_not_excluded() {
+        CalculatorCostSummary nullIdSummary = new CalculatorCostSummary();
+        nullIdSummary.setCalculatorId(null);
+        nullIdSummary.setCalculatorName("unknown");
+        nullIdSummary.setFrequency(RunFrequency.DAILY);
+        nullIdSummary.setTotalRuns(1L);
+        nullIdSummary.setTotalCost(BigDecimal.ONE);
+        nullIdSummary.setAvgCostPerRun(BigDecimal.ONE);
+        nullIdSummary.setDbuCost(BigDecimal.ZERO);
+        nullIdSummary.setVmCost(BigDecimal.ZERO);
+        nullIdSummary.setStorageCost(BigDecimal.ZERO);
+        nullIdSummary.setSuccessfulRuns(1L);
+        nullIdSummary.setFailedRuns(0L);
+        nullIdSummary.setSpotInstanceRuns(0L);
+        nullIdSummary.setPhotonEnabledRuns(0L);
+
+        when(repo.getCalculatorCostSummary(any(), any(), any()))
+                .thenReturn(List.of(nullIdSummary, summary("prod_calc")));
+
+        var service = serviceWithPatterns("test_calc");
+        var result = service.getCalculatorCostSummary(RunFrequency.DAILY, LocalDate.now().minusDays(7), LocalDate.now());
+
+        assertThat(result).hasSize(2);
+    }
+
+    @Test
+    void top_expensive_excludes_matching_calculators() {
+        when(repo.getCalculatorCostSummary(any(), any(), any()))
+                .thenReturn(List.of(summary("test_calc"), summary("prod_calc_1"), summary("prod_calc_2")));
+
+        var service = serviceWithPatterns("test_calc");
+        var result = service.getTopExpensiveCalculators(RunFrequency.DAILY, 10, LocalDate.now().minusDays(7), LocalDate.now());
+
+        assertThat(result).extracting(CalculatorCostSummary::getCalculatorId)
+                .doesNotContain("test_calc");
+    }
+
     private CalculatorCostSummary summary(String calculatorId) {
         CalculatorCostSummary s = new CalculatorCostSummary();
         s.setCalculatorId(calculatorId);
