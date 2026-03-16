@@ -6,6 +6,7 @@ import com.company.observability.domain.RunFrequency;
 import com.company.observability.dto.*;
 import com.company.observability.repository.CalculatorRunCostRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -14,6 +15,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class CostAnalyticsService {
 
     private final CalculatorRunCostRepository costRepository;
@@ -47,6 +49,9 @@ public class CostAnalyticsService {
     // Cost trend (grouped by reporting_date) — NOT filtered (date-aggregated totals)
     // -------------------------------------------------------------------------
 
+    // NOT filtered: returns date-aggregated totals; when called with a specific
+    // calculatorId (including an excluded one) it is treated as a direct lookup,
+    // consistent with the cost-card exclusion policy.
     public List<DailyCostTrend> getCostTrend(
             RunFrequency frequency, LocalDate startDate, LocalDate endDate, String calculatorId) {
         return calculatorId == null
@@ -58,6 +63,8 @@ public class CostAnalyticsService {
     // Month-over-month trend per (calculator, frequency)
     // -------------------------------------------------------------------------
 
+    // NOT filtered: this method is used by CostCardService for direct per-calculator
+    // lookups, which are intentionally exempt from exclusion filtering.
     public List<MonthlyCostTrend> getMonthlyCostTrend(
             String calculatorId, RunFrequency frequency, int months) {
         return costRepository.getMonthlyCostTrend(calculatorId, frequency, months);
@@ -88,6 +95,13 @@ public class CostAnalyticsService {
     // Recent runs — FILTERED
     // -------------------------------------------------------------------------
 
+    /**
+     * Returns recent runs, excluding any calculator that matches the exclusion list.
+     *
+     * <p><b>Note:</b> The {@code limit} is applied at the database level before
+     * exclusion filtering. If excluded calculators appear in the top-{@code limit}
+     * rows, the returned list may contain fewer than {@code limit} entries.
+     */
     public List<RecentRunCost> getRecentRuns(
             RunFrequency frequency, int limit, String calculatorId, String status) {
         return costRepository.getRecentRunsWithCost(limit, calculatorId, frequency, status)
@@ -205,6 +219,8 @@ public class CostAnalyticsService {
                 if (id.endsWith(p.substring(1))) return true;
             } else if (p.endsWith("*")) {
                 if (id.startsWith(p.substring(0, p.length() - 1))) return true;
+            } else {
+                log.warn("Unsupported exclusion pattern '{}': '*' must appear only at the start, end, or both ends. Pattern will not match anything.", pattern);
             }
         }
         return false;
