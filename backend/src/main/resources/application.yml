@@ -63,6 +63,7 @@ cors:
 
 # Cost analytics settings
 cost-analytics:
+  excluded-calculators: []   # e.g. ["test_calculator", "*curation", "staging_*"]
   cache:
     ttl-minutes: 15
   export:
