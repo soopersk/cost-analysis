@@ -1,5 +1,6 @@
 package com.company.observability.service;
 
+import com.company.observability.config.CostAnalyticsProperties;
 import com.company.observability.domain.CalculatorRunCost;
 import com.company.observability.domain.RunFrequency;
 import com.company.observability.dto.*;
@@ -9,34 +10,19 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
-import java.util.stream.Collectors;
 
-/**
- * Cost analytics service.
- *
- * <p>Every public method accepts {@link RunFrequency} as a first-class
- * parameter. Callers must always specify whether they want DAILY or MONTHLY
- * cost analysis — there is no default that silently mixes both cadences.
- */
 @Service
 @RequiredArgsConstructor
 public class CostAnalyticsService {
 
     private final CalculatorRunCostRepository costRepository;
+    private final CostAnalyticsProperties     properties;
 
     // -------------------------------------------------------------------------
     // Dashboard
     // -------------------------------------------------------------------------
 
-    /**
-     * Full dashboard payload for a given frequency and period.
-     *
-     * @param frequency   DAILY or MONTHLY — determines which runs are included
-     * @param period      "7d", "30d", or "90d" relative to today's reporting date
-     * @param calculatorId  specific calculator, or null / "all" for all
-     */
     public CostDashboardResponse getDashboardData(
             RunFrequency frequency, String period, String calculatorId) {
 
@@ -58,7 +44,7 @@ public class CostAnalyticsService {
     }
 
     // -------------------------------------------------------------------------
-    // Cost trend (grouped by reporting_date)
+    // Cost trend (grouped by reporting_date) — NOT filtered (date-aggregated totals)
     // -------------------------------------------------------------------------
 
     public List<DailyCostTrend> getCostTrend(
@@ -72,48 +58,46 @@ public class CostAnalyticsService {
     // Month-over-month trend per (calculator, frequency)
     // -------------------------------------------------------------------------
 
-    /**
-     * Month-over-month cost trend for one (calculator, frequency) pair.
-     * DAILY and MONTHLY trends for the same calculator are always separate series.
-     */
     public List<MonthlyCostTrend> getMonthlyCostTrend(
             String calculatorId, RunFrequency frequency, int months) {
         return costRepository.getMonthlyCostTrend(calculatorId, frequency, months);
     }
 
     // -------------------------------------------------------------------------
-    // Per-(calculator, frequency) summary
+    // Per-(calculator, frequency) summary — FILTERED
     // -------------------------------------------------------------------------
 
-    /**
-     * Returns one summary row per (calculator, frequency) pair.
-     * If {@code frequency} is null, all frequencies are returned together
-     * (useful for a cross-frequency admin view).
-     */
     public List<CalculatorCostSummary> getCalculatorCostSummary(
             RunFrequency frequency, LocalDate startDate, LocalDate endDate) {
-        return costRepository.getCalculatorCostSummary(frequency, startDate, endDate);
+        return costRepository.getCalculatorCostSummary(frequency, startDate, endDate)
+                .stream()
+                .filter(s -> !isExcluded(s.getCalculatorId()))
+                .toList();
     }
 
     public List<CalculatorCostSummary> getTopExpensiveCalculators(
             RunFrequency frequency, int limit, LocalDate startDate, LocalDate endDate) {
         return costRepository.getCalculatorCostSummary(frequency, startDate, endDate)
                 .stream()
+                .filter(s -> !isExcluded(s.getCalculatorId()))
                 .limit(limit)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     // -------------------------------------------------------------------------
-    // Recent runs
+    // Recent runs — FILTERED
     // -------------------------------------------------------------------------
 
     public List<RecentRunCost> getRecentRuns(
             RunFrequency frequency, int limit, String calculatorId, String status) {
-        return costRepository.getRecentRunsWithCost(limit, calculatorId, frequency, status);
+        return costRepository.getRecentRunsWithCost(limit, calculatorId, frequency, status)
+                .stream()
+                .filter(r -> !isExcluded(r.getCalculatorId()))
+                .toList();
     }
 
     // -------------------------------------------------------------------------
-    // Cost breakdown
+    // Cost breakdown — NOT filtered (aggregate totals, no calculatorId field)
     // -------------------------------------------------------------------------
 
     public CostBreakdown getCostBreakdown(
@@ -122,7 +106,7 @@ public class CostAnalyticsService {
     }
 
     // -------------------------------------------------------------------------
-    // Efficiency metrics
+    // Efficiency metrics — NOT filtered (aggregate totals, no calculatorId field)
     // -------------------------------------------------------------------------
 
     public EfficiencyMetrics getEfficiencyMetrics(
@@ -131,28 +115,30 @@ public class CostAnalyticsService {
     }
 
     // -------------------------------------------------------------------------
-    // Anomaly detection
+    // Anomaly detection — FILTERED
     // -------------------------------------------------------------------------
 
-    /**
-     * Anomalies are always scoped to the same (calculator, frequency) pair —
-     * a MONTHLY run is never benchmarked against DAILY run averages.
-     */
     public List<CostAnomaly> getCostAnomalies(
             RunFrequency frequency, double threshold,
             LocalDate startDate, LocalDate endDate) {
-        return costRepository.getCostAnomalies(frequency, threshold, startDate, endDate);
+        return costRepository.getCostAnomalies(frequency, threshold, startDate, endDate)
+                .stream()
+                .filter(a -> !isExcluded(a.getCalculatorId()))
+                .toList();
     }
 
     // -------------------------------------------------------------------------
-    // Export
+    // Export — FILTERED
     // -------------------------------------------------------------------------
 
     public byte[] exportToCsv(
             RunFrequency frequency, LocalDate startDate, LocalDate endDate, String calculatorId) {
 
         List<CalculatorRunCost> runs =
-                costRepository.getAllRunsForExport(frequency, startDate, endDate, calculatorId);
+                costRepository.getAllRunsForExport(frequency, startDate, endDate, calculatorId)
+                        .stream()
+                        .filter(r -> !isExcluded(r.getCalculatorId()))
+                        .toList();
 
         StringBuilder csv = new StringBuilder();
         csv.append("run_id,calculator_id,calculator_name,frequency,reporting_date,job_name,")
@@ -189,6 +175,36 @@ public class CostAnalyticsService {
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Returns true if the given calculatorId matches any pattern in the
+     * excluded-calculators list. Patterns support a single '*' wildcard:
+     * <ul>
+     *   <li>{@code *suffix}  — matches any id ending with "suffix"</li>
+     *   <li>{@code prefix*}  — matches any id starting with "prefix"</li>
+     *   <li>{@code *middle*} — matches any id containing "middle"</li>
+     *   <li>{@code exact}    — exact match (no wildcard)</li>
+     * </ul>
+     * All comparisons are case-insensitive.
+     */
+    private boolean isExcluded(String calculatorId) {
+        if (calculatorId == null) return false;
+        String id = calculatorId.toLowerCase();
+        for (String pattern : properties.getExcludedCalculators()) {
+            String p = pattern.toLowerCase();
+            if (!p.contains("*")) {
+                if (id.equals(p)) return true;
+            } else if (p.startsWith("*") && p.endsWith("*")) {
+                String middle = p.substring(1, p.length() - 1);
+                if (id.contains(middle)) return true;
+            } else if (p.startsWith("*")) {
+                if (id.endsWith(p.substring(1))) return true;
+            } else if (p.endsWith("*")) {
+                if (id.startsWith(p.substring(0, p.length() - 1))) return true;
+            }
+        }
+        return false;
+    }
 
     private LocalDate resolveStartDate(String period, LocalDate endDate) {
         if (period != null && period.matches("\\d+d")) {
