@@ -424,6 +424,57 @@ public class CalculatorRunCostRepository {
     }
 
     // =========================================================================
+    // COST CARD
+    // =========================================================================
+
+    /**
+     * Fetches per-calculator config (environment, daily threshold).
+     * Returns empty if no config row exists for this calculator.
+     */
+    public Optional<Map<String, Object>> getCalculatorConfig(String calculatorId) {
+        String sql = """
+            SELECT environment, daily_threshold_usd
+            FROM calculator_config
+            WHERE calculator_id = :calculatorId
+            """;
+        List<Map<String, Object>> rows = namedJdbc.queryForList(
+                sql, Map.of("calculatorId", calculatorId));
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
+    }
+
+    /**
+     * Returns previous-calendar-month and year-to-date cost totals for one
+     * (calculator, frequency) pair. Multiple runs on the same date are summed.
+     * Both values use COALESCE so they return 0 when no runs exist.
+     */
+    public Map<String, BigDecimal> getCostCardTotals(String calculatorId, RunFrequency frequency) {
+        // language=sql
+        String sql = """
+            SELECT
+                COALESCE(SUM(total_cost_usd) FILTER (
+                    WHERE reporting_date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')
+                      AND reporting_date <  DATE_TRUNC('month', CURRENT_DATE)
+                ), 0) AS prev_month_cost,
+                COALESCE(SUM(total_cost_usd) FILTER (
+                    WHERE reporting_date >= DATE_TRUNC('year', CURRENT_DATE)
+                ), 0) AS ytd_cost
+            FROM calculator_run_costs
+            WHERE calculator_id = :calculatorId
+              AND frequency     = :frequency
+            """;
+
+        Map<String, Object> params = Map.of(
+                "calculatorId", calculatorId,
+                "frequency",    frequency.name()
+        );
+
+        return namedJdbc.queryForObject(sql, params, (rs, n) -> Map.of(
+                "prev_month", rs.getBigDecimal("prev_month_cost"),
+                "ytd",        rs.getBigDecimal("ytd_cost")
+        ));
+    }
+
+    // =========================================================================
     // UTILITY
     // =========================================================================
 
